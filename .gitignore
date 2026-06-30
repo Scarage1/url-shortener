@@ -1,0 +1,24 @@
+# Environment variables
+.env
+
+# Go binaries
+/bin
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Coverage
+*.out
+coverage.out
+
+# IDE
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
