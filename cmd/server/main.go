@@ -3,23 +3,16 @@ package main
 import ("fmt"
 		"github.com/Scarage1/url-shortener/internal/config"
 		"github.com/Scarage1/url-shortener/internal/database"
-		"github.com/gin-gonic/gin"
+		"github.com/Scarage1/url-shortener/internal/router"
 )
 
 func main() {
 	cfg := config.LoadConfig()
 	db := database.Connect(cfg)
-	_=db // we will use it nxt phase
+	r := router.SetupRouter(db)
 
-	router := gin.Default()
-
-	router.GET("/", func(c *gin.Context) {
-		c.JSON(200, gin.H{
-			"application": cfg.AppName,
-			"status": "running",
-		})
-	})
+	
 
 	fmt.Println("Server started on port", cfg.Port)
-	router.Run(":" + cfg.Port)
+	r.Run(":" + cfg.Port)
 }
