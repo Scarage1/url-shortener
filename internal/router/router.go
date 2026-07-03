@@ -15,7 +15,16 @@ func SetupRouter(
 	redisClient *redis.Client,
 ) *gin.Engine {
 
-	r := gin.Default()
+	r := gin.New()
+
+	r.Use(
+		gin.Recovery(),
+	)
+
+	r.Use(
+		middleware.RequestID(),
+		middleware.Logger(),
+	)
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{

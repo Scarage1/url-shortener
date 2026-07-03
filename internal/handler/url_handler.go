@@ -79,10 +79,8 @@ func (h *URLHandler) GetStats(
 
 	code := c.Param("code")
 
-
 	url, err :=
 		h.Service.GetStats(code)
-
 
 	if err != nil {
 
@@ -96,24 +94,18 @@ func (h *URLHandler) GetStats(
 		return
 	}
 
-
 	c.JSON(
 		http.StatusOK,
 		gin.H{
-			"short_code":
-				url.ShortCode,
+			"short_code": url.ShortCode,
 
-			"original_url":
-				url.OriginalURL,
+			"original_url": url.OriginalURL,
 
-			"clicks":
-				url.ClickCount,
+			"clicks": url.ClickCount,
 
-			"created_at":
-				url.CreatedAt,
+			"created_at": url.CreatedAt,
 
-			"last_accessed":
-				url.LastAccessed,
+			"last_accessed": url.LastAccessed,
 		},
 	)
 }
