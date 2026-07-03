@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 	"time"
 	"context"
+	"log"
 )
 
 
@@ -27,58 +28,85 @@ func NewURLService(repo *repository.URLRepository, redis *redis.Client) *URLServ
 
 func (s *URLService) GetOriginalURL(
 	shortCode string,
-) (*model.URL,error){
+) (*model.URL, error) {
+
+	ctx := context.Background()
+
+	cacheKey := "url:" + shortCode
+	clickKey := "clicks:" + shortCode
 
 
-	cachedURL,err :=
-		s.Redis.Get(
-			context.Background(),
-			shortCode,
-		).Result()
+	// 1. Check Redis cache
+	cachedURL, err := s.Redis.Get(
+		ctx,
+		cacheKey,
+	).Result()
 
 
 	if err == nil {
 
+		if err := s.Redis.Incr(
+			ctx,
+			clickKey,
+		).Err(); err != nil {
+
+			log.Println(
+				"Redis counter error:",
+				err,
+			)
+		}
+
 
 		return &model.URL{
-			ShortCode: shortCode,
+			ShortCode:   shortCode,
 			OriginalURL: cachedURL,
-		},nil
+		}, nil
 	}
 
 
-	url,err :=
-		s.Repo.FindByShortCode(
-			shortCode,
-		)
-
-
-	if err != nil {
-
-		return nil,err
-	}
-
-
-	s.Redis.Set(
-		context.Background(),
+	// 2. Cache miss → PostgreSQL
+	url, err := s.Repo.FindByShortCode(
 		shortCode,
-		url.OriginalURL,
-		time.Hour,
 	)
 
 
-	now := time.Now()
-
-	url.ClickCount++
-
-	url.LastAccessed=&now
+	if err != nil {
+		return nil, err
+	}
 
 
-	s.Repo.Update(url)
+	// 3. Store in Redis
+	if err := s.Redis.Set(
+		ctx,
+		cacheKey,
+		url.OriginalURL,
+		time.Hour,
+	).Err(); err != nil {
+
+		log.Println(
+			"Redis cache error:",
+			err,
+		)
+	}
 
 
-	return url,nil
+	// 4. Increment Redis counter
+	if err := s.Redis.Incr(
+		ctx,
+		clickKey,
+	).Err(); err != nil {
+
+		log.Println(
+			"Redis counter error:",
+			err,
+		)
+	}
+
+
+	return url, nil
 }
+
+
 
 func (s *URLService) CreateShortURL(
 	originalURL string,
