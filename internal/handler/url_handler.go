@@ -4,11 +4,11 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
+	"github.com/Scarage1/url-shortener/internal/service"
 )
 
 type URLHandler struct {
-	DB *gorm.DB
+	Service *service.URLService
 }
 
 type ShortenRequest struct {
@@ -20,9 +20,9 @@ type ShortenResponse struct {
 	ShortURL  string `json:"short_url"`
 }
 
-func NewURLHandler(db *gorm.DB) *URLHandler {
+func NewURLHandler(service *service.URLService) *URLHandler {
 	return &URLHandler{
-		DB: db,
+		Service: service,
 	}
 }
 
@@ -33,9 +33,19 @@ func (h *URLHandler) ShortenURL(c *gin.Context) {
 		return
 	}
 
+	url, err := h.Service.CreateShortURL(req.URL)
+
+if err != nil {
+	c.JSON(500, gin.H{
+		"error": err.Error(),
+	})
+	return
+}
+
+
 	response := ShortenResponse{
-		ShortCode:"abc123",
-		ShortURL: "http://localhost:8080/abc123",
+		ShortCode: url.ShortCode,
+		ShortURL:  "http://localhost:8080/" + url.ShortCode,
 	}
 	c.JSON(http.StatusOK, response)
 }

@@ -2,6 +2,8 @@ package router
 
 import (
 	"github.com/Scarage1/url-shortener/internal/handler"
+	"github.com/Scarage1/url-shortener/internal/repository"
+    "github.com/Scarage1/url-shortener/internal/service"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -17,7 +19,11 @@ func SetupRouter(db *gorm.DB) *gin.Engine {
 		})
 	})
 
-	urlHandler := handler.NewURLHandler(db)
+	urlRepo := repository.NewURLRepository(db)
+
+	urlService := service.NewURLService(urlRepo)
+
+	urlHandler := handler.NewURLHandler(urlService)
 
 	api := r.Group("/api/v1")
 
