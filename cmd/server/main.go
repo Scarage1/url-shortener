@@ -4,16 +4,22 @@ import ("fmt"
 		"github.com/Scarage1/url-shortener/internal/config"
 		"github.com/Scarage1/url-shortener/internal/database"
 		"github.com/Scarage1/url-shortener/internal/router"
-		"github.com/Scarage1/url-shortener/internal/utils"
+		"github.com/Scarage1/url-shortener/internal/cache"
 )
 
 func main() {
 	cfg := config.LoadConfig()
-	code, _ := utils.GenerateShortCode(6)
-
-    fmt.Println(code)
+	
 	db := database.Connect(cfg)
-	r := router.SetupRouter(db)
+
+	redisClient := cache.ConnectRedis(
+	cfg.RedisURL,
+	)
+
+	r := router.SetupRouter(
+		db,
+		redisClient,
+	)
 
 	
 

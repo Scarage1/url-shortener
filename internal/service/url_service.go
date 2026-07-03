@@ -4,56 +4,80 @@ import (
 	"github.com/Scarage1/url-shortener/internal/model"
 	"github.com/Scarage1/url-shortener/internal/repository"
 	"github.com/Scarage1/url-shortener/internal/utils"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 	"time"
+	"context"
 )
 
 
 type URLService struct {
 	Repo *repository.URLRepository
+	Redis *redis.Client
 }
 
 
-func NewURLService(repo *repository.URLRepository) *URLService {
+func NewURLService(repo *repository.URLRepository, redis *redis.Client) *URLService {
 
 	return &URLService{
 		Repo: repo,
+		Redis: redis,
 	}
 }
 
 func (s *URLService) GetOriginalURL(
 	shortCode string,
-) (*model.URL, error) {
+) (*model.URL,error){
 
 
-	url, err :=
-		s.Repo.FindByShortCode(shortCode)
+	cachedURL,err :=
+		s.Redis.Get(
+			context.Background(),
+			shortCode,
+		).Result()
+
+
+	if err == nil {
+
+
+		return &model.URL{
+			ShortCode: shortCode,
+			OriginalURL: cachedURL,
+		},nil
+	}
+
+
+	url,err :=
+		s.Repo.FindByShortCode(
+			shortCode,
+		)
 
 
 	if err != nil {
 
-		return nil, err
+		return nil,err
 	}
+
+
+	s.Redis.Set(
+		context.Background(),
+		shortCode,
+		url.OriginalURL,
+		time.Hour,
+	)
 
 
 	now := time.Now()
 
-
 	url.ClickCount++
 
-	url.LastAccessed = &now
+	url.LastAccessed=&now
 
 
-	err = s.Repo.Update(url)
+	s.Repo.Update(url)
 
 
-	if err != nil {
-
-		return nil, err
-	}
-
-
-	return url, nil
+	return url,nil
 }
 
 func (s *URLService) CreateShortURL(

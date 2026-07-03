@@ -4,12 +4,15 @@ import (
 	"github.com/Scarage1/url-shortener/internal/handler"
 	"github.com/Scarage1/url-shortener/internal/repository"
     "github.com/Scarage1/url-shortener/internal/service"
-
+	"github.com/redis/go-redis/v9"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
-func SetupRouter(db *gorm.DB) *gin.Engine {
+func SetupRouter(
+	db *gorm.DB,
+	redisClient *redis.Client,
+	) *gin.Engine {
 
 	r := gin.Default()
 
@@ -21,7 +24,10 @@ func SetupRouter(db *gorm.DB) *gin.Engine {
 
 	urlRepo := repository.NewURLRepository(db)
 
-	urlService := service.NewURLService(urlRepo)
+	urlService := service.NewURLService(
+		urlRepo,
+		redisClient,
+		)
 
 	urlHandler := handler.NewURLHandler(urlService)
 
