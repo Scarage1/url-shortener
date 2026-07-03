@@ -26,6 +26,32 @@ func NewURLHandler(service *service.URLService) *URLHandler {
 	}
 }
 
+func (h *URLHandler) RedirectURL(c *gin.Context) {
+
+	shortCode := c.Param("code")
+
+
+	url, err := h.Service.GetOriginalURL(shortCode)
+
+	if err != nil {
+
+		c.JSON(
+			http.StatusNotFound,
+			gin.H{
+				"error": "URL not found",
+			},
+		)
+
+		return
+	}
+
+
+	c.Redirect(
+		http.StatusFound,
+		url.OriginalURL,
+	)
+}
+
 func (h *URLHandler) ShortenURL(c *gin.Context) {
 	var req ShortenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

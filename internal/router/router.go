@@ -32,6 +32,7 @@ func SetupRouter(db *gorm.DB) *gin.Engine {
 
 	}
 
+	r.GET("/:code", urlHandler.RedirectURL)
 	
 
 	return r

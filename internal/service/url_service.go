@@ -19,6 +19,16 @@ func NewURLService(repo *repository.URLRepository) *URLService {
 	}
 }
 
+func (s *URLService) GetOriginalURL(shortCode string) (*model.URL, error) {
+
+	url, err := s.Repo.FindByShortCode(shortCode)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return url, nil
+}
 
 func (s *URLService) CreateShortURL(originalURL string) (*model.URL, error) {
 
