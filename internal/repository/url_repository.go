@@ -66,3 +66,10 @@ func (r *URLRepository) FindByShortCode(code string) (*model.URL, error) {
 
 	return &url, nil
 }
+
+func (r *URLRepository) Update(
+	url *model.URL,
+) error {
+
+	return r.DB.Save(url).Error
+}

@@ -5,6 +5,7 @@ import (
 	"github.com/Scarage1/url-shortener/internal/repository"
 	"github.com/Scarage1/url-shortener/internal/utils"
 	"gorm.io/gorm"
+	"time"
 )
 
 
@@ -20,13 +21,37 @@ func NewURLService(repo *repository.URLRepository) *URLService {
 	}
 }
 
-func (s *URLService) GetOriginalURL(shortCode string) (*model.URL, error) {
+func (s *URLService) GetOriginalURL(
+	shortCode string,
+) (*model.URL, error) {
 
-	url, err := s.Repo.FindByShortCode(shortCode)
+
+	url, err :=
+		s.Repo.FindByShortCode(shortCode)
+
 
 	if err != nil {
+
 		return nil, err
 	}
+
+
+	now := time.Now()
+
+
+	url.ClickCount++
+
+	url.LastAccessed = &now
+
+
+	err = s.Repo.Update(url)
+
+
+	if err != nil {
+
+		return nil, err
+	}
+
 
 	return url, nil
 }
@@ -106,4 +131,13 @@ func (s *URLService) CreateShortURL(
 
 
 	return url, nil
+}
+
+func (s *URLService) GetStats(
+	shortCode string,
+) (*model.URL,error){
+
+	return s.Repo.FindByShortCode(
+		shortCode,
+	)
 }

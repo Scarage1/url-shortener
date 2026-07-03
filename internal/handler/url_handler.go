@@ -75,3 +75,49 @@ if err != nil {
 	}
 	c.JSON(http.StatusOK, response)
 }
+
+func (h *URLHandler) GetStats(
+	c *gin.Context,
+){
+
+	code := c.Param("code")
+
+
+	url,err :=
+		h.Service.GetStats(code)
+
+
+	if err != nil {
+
+		c.JSON(
+			404,
+			gin.H{
+				"error":"URL not found",
+			},
+		)
+
+		return
+	}
+
+
+	c.JSON(
+		200,
+		gin.H{
+
+			"short_code":
+				url.ShortCode,
+
+			"original_url":
+				url.OriginalURL,
+
+			"clicks":
+				url.ClickCount,
+
+			"created_at":
+				url.CreatedAt,
+
+			"last_accessed":
+				url.LastAccessed,
+		},
+	)
+}

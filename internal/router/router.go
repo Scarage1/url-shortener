@@ -29,6 +29,7 @@ func SetupRouter(db *gorm.DB) *gin.Engine {
 
 	{
 		api.POST("/shorten", urlHandler.ShortenURL)
+		api.GET("/stats/:code",urlHandler.GetStats)
 
 	}
 
