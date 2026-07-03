@@ -7,8 +7,8 @@ import (
 
 const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
-func GenerateShortCode(length int) (string, error){
-	code:= make([]byte, length)
+func GenerateShortCode(length int) (string, error) {
+	code := make([]byte, length)
 	for i := range code {
 		num, err := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
 		if err != nil {

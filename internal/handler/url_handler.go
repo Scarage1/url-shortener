@@ -3,8 +3,8 @@ package handler
 import (
 	"net/http"
 
-	"github.com/gin-gonic/gin"
 	"github.com/Scarage1/url-shortener/internal/service"
+	"github.com/gin-gonic/gin"
 )
 
 type URLHandler struct {
@@ -30,7 +30,6 @@ func (h *URLHandler) RedirectURL(c *gin.Context) {
 
 	shortCode := c.Param("code")
 
-
 	url, err := h.Service.GetOriginalURL(shortCode)
 
 	if err != nil {
@@ -44,7 +43,6 @@ func (h *URLHandler) RedirectURL(c *gin.Context) {
 
 		return
 	}
-
 
 	c.Redirect(
 		http.StatusFound,
@@ -61,13 +59,12 @@ func (h *URLHandler) ShortenURL(c *gin.Context) {
 
 	url, err := h.Service.CreateShortURL(req.URL)
 
-if err != nil {
-	c.JSON(500, gin.H{
-		"error": err.Error(),
-	})
-	return
-}
-
+	if err != nil {
+		c.JSON(500, gin.H{
+			"error": err.Error(),
+		})
+		return
+	}
 
 	response := ShortenResponse{
 		ShortCode: url.ShortCode,
@@ -78,46 +75,38 @@ if err != nil {
 
 func (h *URLHandler) GetStats(
 	c *gin.Context,
-){
+) {
 
 	code := c.Param("code")
 
-
-	url,err :=
+	url, err :=
 		h.Service.GetStats(code)
-
 
 	if err != nil {
 
 		c.JSON(
 			404,
 			gin.H{
-				"error":"URL not found",
+				"error": "URL not found",
 			},
 		)
 
 		return
 	}
 
-
 	c.JSON(
 		200,
 		gin.H{
 
-			"short_code":
-				url.ShortCode,
+			"short_code": url.ShortCode,
 
-			"original_url":
-				url.OriginalURL,
+			"original_url": url.OriginalURL,
 
-			"clicks":
-				url.ClickCount,
+			"clicks": url.ClickCount,
 
-			"created_at":
-				url.CreatedAt,
+			"created_at": url.CreatedAt,
 
-			"last_accessed":
-				url.LastAccessed,
+			"last_accessed": url.LastAccessed,
 		},
 	)
 }

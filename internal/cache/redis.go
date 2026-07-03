@@ -9,7 +9,6 @@ import (
 
 var Ctx = context.Background()
 
-
 func ConnectRedis(addr string) *redis.Client {
 
 	client := redis.NewClient(
@@ -18,16 +17,13 @@ func ConnectRedis(addr string) *redis.Client {
 		},
 	)
 
-
 	err := client.Ping(Ctx).Err()
 
 	if err != nil {
 		panic(err)
 	}
 
-
 	fmt.Println("Connected to Redis")
-
 
 	return client
 }

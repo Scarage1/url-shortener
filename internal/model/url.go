@@ -1,16 +1,16 @@
 package model
 
 import (
-	"time"
 	"gorm.io/gorm"
+	"time"
 )
 
 type URL struct {
 	gorm.Model
 
-	ShortCode string `gorm:"uniqueIndex;not null"`
+	ShortCode   string `gorm:"uniqueIndex;not null"`
 	OriginalURL string
 
-	ClickCount int
+	ClickCount   int
 	LastAccessed *time.Time
 }
