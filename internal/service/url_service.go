@@ -4,6 +4,7 @@ import (
 	"github.com/Scarage1/url-shortener/internal/model"
 	"github.com/Scarage1/url-shortener/internal/repository"
 	"github.com/Scarage1/url-shortener/internal/utils"
+	"gorm.io/gorm"
 )
 
 
@@ -30,24 +31,76 @@ func (s *URLService) GetOriginalURL(shortCode string) (*model.URL, error) {
 	return url, nil
 }
 
-func (s *URLService) CreateShortURL(originalURL string) (*model.URL, error) {
+func (s *URLService) CreateShortURL(
+	originalURL string,
+) (*model.URL, error) {
 
-	shortCode, err := utils.GenerateShortCode(6)
 
-	if err != nil {
+	existingURL, err :=
+		s.Repo.FindByOriginalURL(
+			originalURL,
+		)
+
+
+	if err == nil {
+
+		return existingURL, nil
+	}
+
+
+	if err != gorm.ErrRecordNotFound {
+
 		return nil, err
 	}
 
 
+	var shortCode string
+
+
+	for {
+
+
+		code, err :=
+			utils.GenerateShortCode(6)
+
+
+		if err != nil {
+			return nil, err
+		}
+
+
+		_, err =
+			s.Repo.FindByShortCode(code)
+
+
+		if err == gorm.ErrRecordNotFound {
+
+			shortCode = code
+
+			break
+		}
+
+
+		if err != nil {
+
+			return nil, err
+		}
+	}
+
+
 	url := &model.URL{
-		ShortCode:   shortCode,
+
+		ShortCode: shortCode,
+
 		OriginalURL: originalURL,
 	}
 
 
 	err = s.Repo.Create(url)
 
+
 	if err != nil {
+
 		return nil, err
 	}
 
