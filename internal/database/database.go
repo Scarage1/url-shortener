@@ -2,7 +2,6 @@ package database
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/Scarage1/url-shortener/internal/config"
 	"github.com/Scarage1/url-shortener/internal/model"
@@ -12,18 +11,42 @@ import (
 )
 
 func Connect(cfg config.Config) *gorm.DB {
-	db, err := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{})
+
+	dsn := fmt.Sprintf(
+		"host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
+		cfg.DBHost,
+		cfg.DBUser,
+		cfg.DBPassword,
+		cfg.DBName,
+		cfg.DBPort,
+	)
+
+	db, err := gorm.Open(
+		postgres.Open(dsn),
+		&gorm.Config{},
+	)
+
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+
+		panic(err)
 	}
 
-	fmt.Println("Connected to PostgreSQL")
+	fmt.Println(
+		"Connected to PostgreSQL",
+	)
 
-	err = db.AutoMigrate(&model.URL{})
+	err = db.AutoMigrate(
+		&model.URL{},
+	)
+
 	if err != nil {
-		log.Fatalf("Migration failed: %v", err)
+
+		panic(err)
 	}
-	fmt.Println("Database migrated")
+
+	fmt.Println(
+		"Database migrated",
+	)
 
 	return db
 }

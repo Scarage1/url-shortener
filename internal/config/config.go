@@ -1,30 +1,57 @@
 package config
 
 import (
+	"log"
+
 	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
-	"log"
 )
 
 type Config struct {
-	AppName     string
-	Port        string
-	DatabaseURL string
-	RedisURL    string
+	Port string
+
+	DBHost     string
+	DBPort     string
+	DBUser     string
+	DBPassword string
+	DBName     string
+
+	RedisURL string
 }
 
 func LoadConfig() Config {
+
 	err := godotenv.Load()
+
 	if err != nil {
-		log.Printf("Failed to load .env: %v\n", err)
+
+		log.Println(
+			"Failed to load .env:",
+			err,
+		)
 	}
+
 	viper.AutomaticEnv()
 
-	cfg := Config{
-		AppName:     viper.GetString("APP_NAME"),
-		Port:        viper.GetString("PORT"),
-		DatabaseURL: viper.GetString("DATABASE_URL"),
-		RedisURL:    viper.GetString("REDIS_URL"),
+	viper.SetDefault(
+		"PORT",
+		"8080",
+	)
+
+	return Config{
+
+		Port: viper.GetString("PORT"),
+
+		DBHost: viper.GetString("DB_HOST"),
+
+		DBPort: viper.GetString("DB_PORT"),
+
+		DBUser: viper.GetString("DB_USER"),
+
+		DBPassword: viper.GetString("DB_PASSWORD"),
+
+		DBName: viper.GetString("DB_NAME"),
+
+		RedisURL: viper.GetString("REDIS_URL"),
 	}
-	return cfg
 }
