@@ -53,7 +53,7 @@ func (h *URLHandler) RedirectURL(c *gin.Context) {
 func (h *URLHandler) ShortenURL(c *gin.Context) {
 	var req ShortenRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid URL"})
 		return
 	}
 
@@ -79,13 +79,15 @@ func (h *URLHandler) GetStats(
 
 	code := c.Param("code")
 
+
 	url, err :=
 		h.Service.GetStats(code)
+
 
 	if err != nil {
 
 		c.JSON(
-			404,
+			http.StatusNotFound,
 			gin.H{
 				"error": "URL not found",
 			},
@@ -94,19 +96,24 @@ func (h *URLHandler) GetStats(
 		return
 	}
 
+
 	c.JSON(
-		200,
+		http.StatusOK,
 		gin.H{
+			"short_code":
+				url.ShortCode,
 
-			"short_code": url.ShortCode,
+			"original_url":
+				url.OriginalURL,
 
-			"original_url": url.OriginalURL,
+			"clicks":
+				url.ClickCount,
 
-			"clicks": url.ClickCount,
+			"created_at":
+				url.CreatedAt,
 
-			"created_at": url.CreatedAt,
-
-			"last_accessed": url.LastAccessed,
+			"last_accessed":
+				url.LastAccessed,
 		},
 	)
 }
