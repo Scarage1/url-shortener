@@ -6,12 +6,10 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-var jwtSecret = []byte(
-	"secret-key",
-)
 
 func GenerateToken(
 	userID uint,
+	secret string,
 ) (string, error) {
 
 	claims :=
@@ -33,12 +31,13 @@ func GenerateToken(
 		)
 
 	return token.SignedString(
-		jwtSecret,
+		[]byte(secret),
 	)
 }
 
 func ValidateToken(
 	tokenString string,
+	secret string,
 ) (uint, error) {
 
 	token, err :=
@@ -46,7 +45,7 @@ func ValidateToken(
 			tokenString,
 			func(token *jwt.Token) (interface{}, error) {
 
-				return jwtSecret, nil
+				return []byte(secret), nil
 			},
 		)
 

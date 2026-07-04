@@ -1,6 +1,7 @@
 package router
 
 import (
+	"github.com/Scarage1/url-shortener/internal/config"
 	"github.com/Scarage1/url-shortener/internal/handler"
 	"github.com/Scarage1/url-shortener/internal/middleware"
 	"github.com/Scarage1/url-shortener/internal/repository"
@@ -13,6 +14,7 @@ import (
 func SetupRouter(
 	db *gorm.DB,
 	redisClient *redis.Client,
+	cfg config.Config,
 ) *gin.Engine {
 
 	r := gin.New()
@@ -38,6 +40,7 @@ func SetupRouter(
 	authService :=
 		service.NewAuthService(
 			userRepo,
+			cfg.JWTSecret,
 		)
 
 	authHandler :=
@@ -52,7 +55,10 @@ func SetupRouter(
 		redisClient,
 	)
 
-	urlHandler := handler.NewURLHandler(urlService)
+	urlHandler := handler.NewURLHandler(
+		urlService,
+		cfg.BaseURL,
+	)
 
 	api := r.Group("/api/v1")
 
@@ -83,7 +89,7 @@ func SetupRouter(
 		)
 
 	protected.Use(
-		middleware.AuthMiddleware(),
+		middleware.AuthMiddleware(cfg.JWTSecret),
 	)
 
 	protected.POST(

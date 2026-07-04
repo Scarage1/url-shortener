@@ -9,15 +9,18 @@ import (
 )
 
 type AuthService struct {
-	UserRepo *repository.UserRepository
+	UserRepo  *repository.UserRepository
+	JWTSecret string
 }
 
 func NewAuthService(
 	repo *repository.UserRepository,
+	jwtSecret string,
 ) *AuthService {
 
 	return &AuthService{
-		UserRepo: repo,
+		UserRepo:  repo,
+		JWTSecret: jwtSecret,
 	}
 }
 
@@ -80,5 +83,6 @@ func (s *AuthService) Login(
 
 	return utils.GenerateToken(
 		user.ID,
+		s.JWTSecret,
 	)
 }

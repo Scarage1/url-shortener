@@ -9,6 +9,7 @@ import (
 
 type URLHandler struct {
 	Service *service.URLService
+	BaseURL string
 }
 
 type ShortenRequest struct {
@@ -20,9 +21,10 @@ type ShortenResponse struct {
 	ShortURL  string `json:"short_url"`
 }
 
-func NewURLHandler(service *service.URLService) *URLHandler {
+func NewURLHandler(service *service.URLService, baseURL string) *URLHandler {
 	return &URLHandler{
 		Service: service,
+		BaseURL: baseURL,
 	}
 }
 
@@ -66,13 +68,33 @@ func (h *URLHandler) ShortenURL(c *gin.Context) {
 		return
 	}
 
-	userIDValue, _ :=
-		c.Get(
-			"user_id",
+	userIDValue, exists := c.Get("user_id")
+
+	if !exists {
+
+		c.JSON(
+			http.StatusUnauthorized,
+			gin.H{
+				"error": "unauthorized",
+			},
 		)
 
-	userID :=
-		userIDValue.(uint)
+		return
+	}
+
+	userID, ok := userIDValue.(uint)
+
+	if !ok {
+
+		c.JSON(
+			http.StatusUnauthorized,
+			gin.H{
+				"error": "invalid user",
+			},
+		)
+
+		return
+	}
 
 	url, err :=
 		h.Service.CreateShortURL(
@@ -83,7 +105,7 @@ func (h *URLHandler) ShortenURL(c *gin.Context) {
 	if err != nil {
 
 		c.JSON(
-			500,
+			http.StatusInternalServerError,
 			gin.H{
 				"error": err.Error(),
 			},
@@ -97,7 +119,7 @@ func (h *URLHandler) ShortenURL(c *gin.Context) {
 
 			ShortCode: url.ShortCode,
 
-			ShortURL: "http://localhost:8080/" +
+			ShortURL: h.BaseURL + "/" +
 				url.ShortCode,
 		}
 
@@ -116,13 +138,33 @@ func (h *URLHandler) GetStats(
 			"code",
 		)
 
-	userIDValue, _ :=
-		c.Get(
-			"user_id",
+	userIDValue, exists := c.Get("user_id")
+
+	if !exists {
+
+		c.JSON(
+			http.StatusUnauthorized,
+			gin.H{
+				"error": "unauthorized",
+			},
 		)
 
-	userID :=
-		userIDValue.(uint)
+		return
+	}
+
+	userID, ok := userIDValue.(uint)
+
+	if !ok {
+
+		c.JSON(
+			http.StatusUnauthorized,
+			gin.H{
+				"error": "invalid user",
+			},
+		)
+
+		return
+	}
 
 	url, err :=
 		h.Service.GetStats(

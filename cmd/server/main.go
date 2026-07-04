@@ -33,6 +33,7 @@ func main() {
 	r := router.SetupRouter(
 		db,
 		redisClient,
+		cfg,
 	)
 
 	server := &http.Server{

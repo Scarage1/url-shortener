@@ -9,7 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func AuthMiddleware() gin.HandlerFunc {
+func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 
 	return func(c *gin.Context) {
 
@@ -41,6 +41,7 @@ func AuthMiddleware() gin.HandlerFunc {
 		userID, err :=
 			utils.ValidateToken(
 				tokenString,
+				jwtSecret,
 			)
 
 		if err != nil {

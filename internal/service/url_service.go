@@ -2,13 +2,14 @@ package service
 
 import (
 	"context"
+	"log"
+	"time"
+
 	"github.com/Scarage1/url-shortener/internal/model"
 	"github.com/Scarage1/url-shortener/internal/repository"
 	"github.com/Scarage1/url-shortener/internal/utils"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
-	"log"
-	"time"
 )
 
 type URLService struct {
@@ -41,6 +42,7 @@ func (s *URLService) GetOriginalURL(
 
 	if err == nil {
 
+		// Increment Redis click counter
 		if err := s.Redis.Incr(
 			ctx,
 			clickKey,
@@ -51,6 +53,17 @@ func (s *URLService) GetOriginalURL(
 				err,
 			)
 		}
+
+		// Non-blocking DB update for LastAccessed
+		go func() {
+			url, dbErr := s.Repo.FindByShortCode(shortCode)
+			if dbErr != nil {
+				return
+			}
+			now := time.Now()
+			url.LastAccessed = &now
+			_ = s.Repo.Update(url)
+		}()
 
 		return &model.URL{
 			ShortCode:   shortCode,
@@ -89,6 +102,16 @@ func (s *URLService) GetOriginalURL(
 
 		log.Println(
 			"Redis counter error:",
+			err,
+		)
+	}
+
+	// 5. Update LastAccessed in DB
+	now := time.Now()
+	url.LastAccessed = &now
+	if err := s.Repo.Update(url); err != nil {
+		log.Println(
+			"DB LastAccessed update error:",
 			err,
 		)
 	}
@@ -163,13 +186,34 @@ func (s *URLService) CreateShortURL(
 	return url, nil
 }
 
+// GetStats returns URL analytics with live click count merged from Redis.
+// The DB stores the persisted baseline; Redis holds the live delta since
+// the last page reload or server restart.
 func (s *URLService) GetStats(
 	code string,
 	userID uint,
 ) (*model.URL, error) {
 
-	return s.Repo.FindByCodeAndUser(
+	url, err := s.Repo.FindByCodeAndUser(
 		code,
 		userID,
 	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Merge live Redis click counter on top of DB baseline
+	ctx := context.Background()
+	clickKey := "clicks:" + code
+
+	redisCount, err := s.Redis.Get(ctx, clickKey).Int()
+
+	if err == nil {
+		// Redis has a live delta — add it to the DB value
+		url.ClickCount += redisCount
+	}
+	// If Redis key is missing (expired/not yet set), fall back to DB value only
+
+	return url, nil
 }

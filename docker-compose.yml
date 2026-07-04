@@ -18,6 +18,9 @@ services:
 
       REDIS_URL: redis:6379
 
+      JWT_SECRET: ${JWT_SECRET}
+      BASE_URL: ${BASE_URL:-http://localhost:8080}
+
     depends_on:
       postgres:
         condition: service_healthy
