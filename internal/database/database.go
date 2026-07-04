@@ -36,6 +36,7 @@ func Connect(cfg config.Config) *gorm.DB {
 	)
 
 	err = db.AutoMigrate(
+		&model.User{},
 		&model.URL{},
 	)
 
