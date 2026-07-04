@@ -6,18 +6,29 @@ import (
 	"time"
 
 	"github.com/Scarage1/url-shortener/internal/model"
-	"github.com/Scarage1/url-shortener/internal/repository"
 	"github.com/Scarage1/url-shortener/internal/utils"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
+// urlRepository is the minimal interface the service needs from the data layer.
+// *repository.URLRepository satisfies it automatically — no changes needed in callers.
+type urlRepository interface {
+	Create(url *model.URL) error
+	FindByOriginalURL(originalURL string, userID uint) (*model.URL, error)
+	FindByShortCode(code string) (*model.URL, error)
+	FindByCodeAndUser(code string, userID uint) (*model.URL, error)
+	FindByUser(userID uint) ([]model.URL, error)
+	Update(url *model.URL) error
+	DeleteByCodeAndUser(code string, userID uint) error
+}
+
 type URLService struct {
-	Repo  *repository.URLRepository
+	Repo  urlRepository
 	Redis *redis.Client
 }
 
-func NewURLService(repo *repository.URLRepository, redis *redis.Client) *URLService {
+func NewURLService(repo urlRepository, redis *redis.Client) *URLService {
 
 	return &URLService{
 		Repo:  repo,
