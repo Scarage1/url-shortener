@@ -57,23 +57,26 @@ func (r *URLRepository) FindByShortCode(code string) (*model.URL, error) {
 	return &url, nil
 }
 
-func (r *URLRepository) FindByCodeAndUser(
-	code string,
-	userID uint,
-) (*model.URL, error) {
 
-	var url model.URL
+func (r *URLRepository) FindByUser(
+	userID uint,
+) ([]model.URL, error) {
+
+	var urls []model.URL
 
 	err :=
 		r.DB.Where(
-			"short_code = ? AND user_id = ?",
-			code,
+			"user_id = ?",
 			userID,
-		).First(
-			&url,
-		).Error
+		).
+			Order(
+				"created_at DESC",
+			).
+			Find(
+				&urls,
+			).Error
 
-	return &url, err
+	return urls, err
 }
 
 func (r *URLRepository) Update(
