@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/Scarage1/url-shortener/internal/service"
+	"github.com/Scarage1/url-shortener/internal/utils"
 	"github.com/gin-gonic/gin"
 )
 
@@ -68,28 +69,14 @@ func (h *URLHandler) ShortenURL(c *gin.Context) {
 		return
 	}
 
-	userIDValue, exists := c.Get("user_id")
+	userID, err := utils.GetUserID(c)
 
-	if !exists {
+	if err != nil {
 
 		c.JSON(
 			http.StatusUnauthorized,
 			gin.H{
 				"error": "unauthorized",
-			},
-		)
-
-		return
-	}
-
-	userID, ok := userIDValue.(uint)
-
-	if !ok {
-
-		c.JSON(
-			http.StatusUnauthorized,
-			gin.H{
-				"error": "invalid user",
 			},
 		)
 
@@ -133,33 +120,16 @@ func (h *URLHandler) GetStats(
 	c *gin.Context,
 ) {
 
-	code :=
-		c.Param(
-			"code",
-		)
+	code := c.Param("code")
 
-	userIDValue, exists := c.Get("user_id")
+	userID, err := utils.GetUserID(c)
 
-	if !exists {
+	if err != nil {
 
 		c.JSON(
 			http.StatusUnauthorized,
 			gin.H{
 				"error": "unauthorized",
-			},
-		)
-
-		return
-	}
-
-	userID, ok := userIDValue.(uint)
-
-	if !ok {
-
-		c.JSON(
-			http.StatusUnauthorized,
-			gin.H{
-				"error": "invalid user",
 			},
 		)
 
@@ -197,6 +167,92 @@ func (h *URLHandler) GetStats(
 			"created_at": url.CreatedAt,
 
 			"last_accessed": url.LastAccessed,
+		},
+	)
+}
+
+func (h *URLHandler) GetUserLinks(
+	c *gin.Context,
+) {
+
+	userID, err := utils.GetUserID(c)
+
+	if err != nil {
+
+		c.JSON(
+			http.StatusUnauthorized,
+			gin.H{
+				"error": "unauthorized",
+			},
+		)
+
+		return
+	}
+
+	urls, err :=
+		h.Service.GetUserLinks(
+			userID,
+		)
+
+	if err != nil {
+
+		c.JSON(
+			http.StatusInternalServerError,
+			gin.H{
+				"error": err.Error(),
+			},
+		)
+
+		return
+	}
+
+	c.JSON(
+		http.StatusOK,
+		urls,
+	)
+}
+
+func (h *URLHandler) DeleteURL(
+	c *gin.Context,
+) {
+
+	code := c.Param("code")
+
+	userID, err := utils.GetUserID(c)
+
+	if err != nil {
+
+		c.JSON(
+			http.StatusUnauthorized,
+			gin.H{
+				"error": "unauthorized",
+			},
+		)
+
+		return
+	}
+
+	err = h.Service.DeleteURL(
+		code,
+		userID,
+	)
+
+	if err != nil {
+
+		c.JSON(
+			http.StatusNotFound,
+			gin.H{
+				"error": "URL not found",
+			},
+		)
+
+		return
+	}
+
+	c.JSON(
+		http.StatusOK,
+		gin.H{
+			"message": "deleted",
 		},
 	)
 }

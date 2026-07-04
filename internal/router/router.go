@@ -102,6 +102,16 @@ func SetupRouter(
 		urlHandler.GetStats,
 	)
 
+	protected.GET(
+		"/links",
+		urlHandler.GetUserLinks,
+	)
+
+	protected.DELETE(
+		"/links/:code",
+		urlHandler.DeleteURL,
+	)
+
 	r.GET("/:code", urlHandler.RedirectURL)
 
 	return r

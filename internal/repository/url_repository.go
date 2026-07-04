@@ -57,6 +57,24 @@ func (r *URLRepository) FindByShortCode(code string) (*model.URL, error) {
 	return &url, nil
 }
 
+func (r *URLRepository) FindByCodeAndUser(
+	code string,
+	userID uint,
+) (*model.URL, error) {
+
+	var url model.URL
+
+	err :=
+		r.DB.Where(
+			"short_code = ? AND user_id = ?",
+			code,
+			userID,
+		).First(
+			&url,
+		).Error
+
+	return &url, err
+}
 
 func (r *URLRepository) FindByUser(
 	userID uint,
@@ -84,4 +102,27 @@ func (r *URLRepository) Update(
 ) error {
 
 	return r.DB.Save(url).Error
+}
+
+func (r *URLRepository) DeleteByCodeAndUser(
+	code string,
+	userID uint,
+) error {
+
+	result :=
+		r.DB.Where(
+			"short_code = ? AND user_id = ?",
+			code,
+			userID,
+		).
+			Delete(
+				&model.URL{},
+			)
+
+	if result.RowsAffected == 0 {
+
+		return gorm.ErrRecordNotFound
+	}
+
+	return result.Error
 }

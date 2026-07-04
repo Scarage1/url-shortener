@@ -217,3 +217,38 @@ func (s *URLService) GetStats(
 
 	return url, nil
 }
+
+// GetUserLinks returns all URLs created by a user, ordered newest first.
+func (s *URLService) GetUserLinks(
+	userID uint,
+) ([]model.URL, error) {
+
+	return s.Repo.FindByUser(
+		userID,
+	)
+}
+
+// DeleteURL removes a URL by short code, enforcing ownership.
+// Also clears the Redis cache and click counter for the code.
+func (s *URLService) DeleteURL(
+	code string,
+	userID uint,
+) error {
+
+	err := s.Repo.DeleteByCodeAndUser(
+		code,
+		userID,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	// Evict Redis cache so stale entries don't redirect to deleted URLs
+	ctx := context.Background()
+
+	s.Redis.Del(ctx, "url:"+code)
+	s.Redis.Del(ctx, "clicks:"+code)
+
+	return nil
+}
