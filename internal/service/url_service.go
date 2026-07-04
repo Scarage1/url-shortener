@@ -98,11 +98,13 @@ func (s *URLService) GetOriginalURL(
 
 func (s *URLService) CreateShortURL(
 	originalURL string,
+	userID uint,
 ) (*model.URL, error) {
 
 	existingURL, err :=
 		s.Repo.FindByOriginalURL(
 			originalURL,
+			userID,
 		)
 
 	if err == nil {
@@ -147,6 +149,8 @@ func (s *URLService) CreateShortURL(
 		ShortCode: shortCode,
 
 		OriginalURL: originalURL,
+
+		UserID: userID,
 	}
 
 	err = s.Repo.Create(url)
@@ -160,10 +164,12 @@ func (s *URLService) CreateShortURL(
 }
 
 func (s *URLService) GetStats(
-	shortCode string,
+	code string,
+	userID uint,
 ) (*model.URL, error) {
 
-	return s.Repo.FindByShortCode(
-		shortCode,
+	return s.Repo.FindByCodeAndUser(
+		code,
+		userID,
 	)
 }

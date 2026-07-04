@@ -24,20 +24,21 @@ func (r *URLRepository) Create(url *model.URL) error {
 
 func (r *URLRepository) FindByOriginalURL(
 	originalURL string,
+	userID uint,
 ) (*model.URL, error) {
 
 	var url model.URL
 
-	err := r.DB.Where(
-		"original_url = ?",
-		originalURL,
-	).First(&url).Error
+	err :=
+		r.DB.Where(
+			"original_url = ? AND user_id = ?",
+			originalURL,
+			userID,
+		).First(
+			&url,
+		).Error
 
-	if err != nil {
-		return nil, err
-	}
-
-	return &url, nil
+	return &url, err
 }
 
 func (r *URLRepository) FindByShortCode(code string) (*model.URL, error) {
@@ -54,6 +55,25 @@ func (r *URLRepository) FindByShortCode(code string) (*model.URL, error) {
 	}
 
 	return &url, nil
+}
+
+func (r *URLRepository) FindByCodeAndUser(
+	code string,
+	userID uint,
+) (*model.URL, error) {
+
+	var url model.URL
+
+	err :=
+		r.DB.Where(
+			"short_code = ? AND user_id = ?",
+			code,
+			userID,
+		).First(
+			&url,
+		).Error
+
+	return &url, err
 }
 
 func (r *URLRepository) Update(

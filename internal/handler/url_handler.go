@@ -51,36 +51,84 @@ func (h *URLHandler) RedirectURL(c *gin.Context) {
 }
 
 func (h *URLHandler) ShortenURL(c *gin.Context) {
+
 	var req ShortenRequest
+
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid URL"})
+
+		c.JSON(
+			http.StatusBadRequest,
+			gin.H{
+				"error": "invalid URL",
+			},
+		)
+
 		return
 	}
 
-	url, err := h.Service.CreateShortURL(req.URL)
+	userIDValue, _ :=
+		c.Get(
+			"user_id",
+		)
+
+	userID :=
+		userIDValue.(uint)
+
+	url, err :=
+		h.Service.CreateShortURL(
+			req.URL,
+			userID,
+		)
 
 	if err != nil {
-		c.JSON(500, gin.H{
-			"error": err.Error(),
-		})
+
+		c.JSON(
+			500,
+			gin.H{
+				"error": err.Error(),
+			},
+		)
+
 		return
 	}
 
-	response := ShortenResponse{
-		ShortCode: url.ShortCode,
-		ShortURL:  "http://localhost:8080/" + url.ShortCode,
-	}
-	c.JSON(http.StatusOK, response)
+	response :=
+		ShortenResponse{
+
+			ShortCode: url.ShortCode,
+
+			ShortURL: "http://localhost:8080/" +
+				url.ShortCode,
+		}
+
+	c.JSON(
+		http.StatusOK,
+		response,
+	)
 }
 
 func (h *URLHandler) GetStats(
 	c *gin.Context,
 ) {
 
-	code := c.Param("code")
+	code :=
+		c.Param(
+			"code",
+		)
+
+	userIDValue, _ :=
+		c.Get(
+			"user_id",
+		)
+
+	userID :=
+		userIDValue.(uint)
 
 	url, err :=
-		h.Service.GetStats(code)
+		h.Service.GetStats(
+			code,
+			userID,
+		)
 
 	if err != nil {
 
@@ -97,6 +145,7 @@ func (h *URLHandler) GetStats(
 	c.JSON(
 		http.StatusOK,
 		gin.H{
+
 			"short_code": url.ShortCode,
 
 			"original_url": url.OriginalURL,

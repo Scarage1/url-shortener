@@ -77,11 +77,24 @@ func SetupRouter(
 		authHandler.Login,
 	)
 
-	{
-		api.POST("/shorten", urlHandler.ShortenURL)
-		api.GET("/stats/:code", urlHandler.GetStats)
+	protected :=
+		api.Group(
+			"",
+		)
 
-	}
+	protected.Use(
+		middleware.AuthMiddleware(),
+	)
+
+	protected.POST(
+		"/shorten",
+		urlHandler.ShortenURL,
+	)
+
+	protected.GET(
+		"/stats/:code",
+		urlHandler.GetStats,
+	)
 
 	r.GET("/:code", urlHandler.RedirectURL)
 

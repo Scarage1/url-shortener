@@ -7,7 +7,7 @@ import (
 
 type URL struct {
 	gorm.Model
-	UserID uint
+	UserID uint `gorm:"not null"`
 
 	ShortCode   string `gorm:"uniqueIndex;not null"`
 	OriginalURL string
