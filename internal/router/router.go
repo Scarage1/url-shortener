@@ -32,6 +32,19 @@ func SetupRouter(
 		})
 	})
 
+	userRepo :=
+		repository.NewUserRepository(db)
+
+	authService :=
+		service.NewAuthService(
+			userRepo,
+		)
+
+	authHandler :=
+		handler.NewAuthHandler(
+			authService,
+		)
+
 	urlRepo := repository.NewURLRepository(db)
 
 	urlService := service.NewURLService(
@@ -47,6 +60,21 @@ func SetupRouter(
 		middleware.RateLimiter(
 			redisClient,
 		),
+	)
+
+	auth :=
+		api.Group(
+			"/auth",
+		)
+
+	auth.POST(
+		"/register",
+		authHandler.Register,
+	)
+
+	auth.POST(
+		"/login",
+		authHandler.Login,
 	)
 
 	{
