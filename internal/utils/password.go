@@ -4,6 +4,10 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// BcryptCost is the bcrypt work factor.
+// Production default is 14. Tests override it to 10 via TestMain for speed.
+var BcryptCost = 14
+
 func HashPassword(
 	password string,
 ) (string, error) {
@@ -11,7 +15,7 @@ func HashPassword(
 	bytes, err :=
 		bcrypt.GenerateFromPassword(
 			[]byte(password),
-			14,
+			BcryptCost,
 		)
 
 	return string(bytes), err
