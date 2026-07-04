@@ -14,20 +14,31 @@ RUN go mod download
 COPY . .
 
 
-RUN go build \
+RUN CGO_ENABLED=0 GOOS=linux go build \
+    -ldflags="-s -w" \
     -o url-shortener \
     ./cmd/server
 
 
+
 # Runtime stage
-FROM alpine:latest
+FROM alpine:3.22
 
 
 WORKDIR /app
 
 
+RUN adduser \
+    -D \
+    -g '' \
+    appuser
+
+
 COPY --from=builder \
     /app/url-shortener .
+
+
+USER appuser
 
 
 EXPOSE 8080
