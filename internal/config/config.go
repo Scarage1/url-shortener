@@ -24,6 +24,13 @@ type Config struct {
 
 	GoogleSafeBrowsingAPIKey string
 	BlockedDomains           []string
+
+	// SMTP for transactional emails (verification, password reset)
+	SMTPHost     string
+	SMTPPort     string
+	SMTPUser     string
+	SMTPPassword string
+	SMTPFrom     string
 }
 
 var knownWeakSecrets = map[string]bool{
@@ -78,6 +85,12 @@ func LoadConfig() (Config, error) {
 		BlockedDomains: splitCSV(
 			viper.GetString("BLOCKED_DOMAINS"),
 		),
+
+		SMTPHost:     viper.GetString("SMTP_HOST"),
+		SMTPPort:     viper.GetString("SMTP_PORT"),
+		SMTPUser:     viper.GetString("SMTP_USER"),
+		SMTPPassword: viper.GetString("SMTP_PASSWORD"),
+		SMTPFrom:     viper.GetString("SMTP_FROM"),
 	}
 
 	if err := validate(cfg); err != nil {
