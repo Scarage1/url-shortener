@@ -44,6 +44,13 @@ func ValidateToken(
 			tokenString,
 			func(token *jwt.Token) (interface{}, error) {
 
+				if _, ok :=
+					token.Method.(*jwt.SigningMethodHMAC); !ok {
+
+					return nil,
+						jwt.ErrTokenSignatureInvalid
+				}
+
 				return []byte(secret), nil
 			},
 		)
