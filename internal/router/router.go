@@ -5,6 +5,7 @@ import (
 	"github.com/Scarage1/url-shortener/internal/handler"
 	"github.com/Scarage1/url-shortener/internal/middleware"
 	"github.com/Scarage1/url-shortener/internal/repository"
+	"github.com/Scarage1/url-shortener/internal/security"
 	"github.com/Scarage1/url-shortener/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -49,10 +50,15 @@ func SetupRouter(
 		)
 
 	urlRepo := repository.NewURLRepository(db)
+	urlScanner := security.NewChainScanner(
+		security.NewRulesScanner(cfg.BlockedDomains),
+		security.NewGoogleSafeBrowsingScanner(cfg.GoogleSafeBrowsingAPIKey),
+	)
 
 	urlService := service.NewURLService(
 		urlRepo,
 		redisClient,
+		urlScanner,
 	)
 
 	urlHandler := handler.NewURLHandler(

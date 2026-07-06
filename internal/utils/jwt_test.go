@@ -2,7 +2,9 @@ package utils
 
 import (
 	"testing"
+	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -51,4 +53,23 @@ func TestValidateToken_TamperedTokenIsRejected(t *testing.T) {
 func TestValidateToken_EmptyTokenIsRejected(t *testing.T) {
 	_, err := ValidateToken("", testSecret)
 	assert.Error(t, err, "empty token must be rejected")
+}
+
+func TestValidateToken_InvalidUserIDClaimIsRejected(t *testing.T) {
+	token := jwt.NewWithClaims(
+		jwt.SigningMethodHS256,
+		jwt.MapClaims{
+			"user_id": "hello",
+			"exp": time.Now().
+				Add(24 * time.Hour).
+				Unix(),
+		},
+	)
+
+	tokenString, err := token.SignedString([]byte(testSecret))
+	require.NoError(t, err)
+
+	_, err = ValidateToken(tokenString, testSecret)
+
+	assert.ErrorIs(t, err, jwt.ErrTokenInvalidClaims)
 }

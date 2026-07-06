@@ -1,10 +1,12 @@
 package service
 
 import (
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/Scarage1/url-shortener/internal/model"
+	"github.com/Scarage1/url-shortener/internal/security"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
@@ -18,6 +20,14 @@ import (
 
 type mockURLRepo struct {
 	urls []*model.URL
+}
+
+type stubScanner struct {
+	err error
+}
+
+func (s stubScanner) Check(string) error {
+	return s.err
 }
 
 func (m *mockURLRepo) Create(url *model.URL) error {
@@ -98,7 +108,11 @@ func (m *mockURLRepo) DeleteByCodeAndUser(code string, userID uint) error {
 // Test helpers
 // ---------------------------------------------------------------------------
 
-func newTestService(t *testing.T, urls []*model.URL) (*URLService, *miniredis.Miniredis) {
+func newTestService(
+	t *testing.T,
+	urls []*model.URL,
+	scanner security.URLScanner,
+) (*URLService, *miniredis.Miniredis) {
 	t.Helper()
 
 	mr, err := miniredis.Run()
@@ -106,7 +120,11 @@ func newTestService(t *testing.T, urls []*model.URL) (*URLService, *miniredis.Mi
 
 	client := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
-	svc := NewURLService(&mockURLRepo{urls: urls}, client)
+	svc := NewURLService(
+		&mockURLRepo{urls: urls},
+		client,
+		scanner,
+	)
 
 	return svc, mr
 }
@@ -125,7 +143,7 @@ func TestGetStats_OwnerCanAccessOwnURL(t *testing.T) {
 		ClickCount:  5,
 	}
 
-	svc, mr := newTestService(t, []*model.URL{url})
+	svc, mr := newTestService(t, []*model.URL{url}, security.AllowAllScanner{})
 	defer mr.Close()
 
 	result, err := svc.GetStats("abc123", ownerID)
@@ -148,7 +166,7 @@ func TestGetStats_OtherUserIsBlocked(t *testing.T) {
 		ClickCount:  5,
 	}
 
-	svc, mr := newTestService(t, []*model.URL{url})
+	svc, mr := newTestService(t, []*model.URL{url}, security.AllowAllScanner{})
 	defer mr.Close()
 
 	_, err := svc.GetStats("abc123", attackerID)
@@ -168,7 +186,7 @@ func TestDeleteURL_OwnerCanDeleteOwnURL(t *testing.T) {
 		UserID:    ownerID,
 	}
 
-	svc, mr := newTestService(t, []*model.URL{url})
+	svc, mr := newTestService(t, []*model.URL{url}, security.AllowAllScanner{})
 	defer mr.Close()
 
 	err := svc.DeleteURL("del123", ownerID)
@@ -185,7 +203,7 @@ func TestDeleteURL_OtherUserCannotDelete(t *testing.T) {
 		UserID:    ownerID,
 	}
 
-	svc, mr := newTestService(t, []*model.URL{url})
+	svc, mr := newTestService(t, []*model.URL{url}, security.AllowAllScanner{})
 	defer mr.Close()
 
 	err := svc.DeleteURL("del123", attackerID)
@@ -207,7 +225,7 @@ func TestCreateShortURL_ReturnsSameCodeForDuplicateURL(t *testing.T) {
 		UserID:      ownerID,
 	}
 
-	svc, mr := newTestService(t, []*model.URL{existing})
+	svc, mr := newTestService(t, []*model.URL{existing}, security.AllowAllScanner{})
 	defer mr.Close()
 
 	result, err := svc.CreateShortURL(original, ownerID)
@@ -229,7 +247,7 @@ func TestGetStats_ClickCountMergesRedisAndDB(t *testing.T) {
 		ClickCount: 10, // DB baseline
 	}
 
-	svc, mr := newTestService(t, []*model.URL{url})
+	svc, mr := newTestService(t, []*model.URL{url}, security.AllowAllScanner{})
 	defer mr.Close()
 
 	// Simulate 5 clicks stored in Redis
@@ -239,4 +257,28 @@ func TestGetStats_ClickCountMergesRedisAndDB(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, 15, result.ClickCount, "total clicks should be DB baseline + Redis delta")
+}
+
+func TestCreateShortURL_SafeURLIsCreated(t *testing.T) {
+	svc, mr := newTestService(t, nil, security.AllowAllScanner{})
+	defer mr.Close()
+
+	result, err := svc.CreateShortURL("https://example.com", 1)
+
+	require.NoError(t, err)
+	assert.Equal(t, "https://example.com", result.OriginalURL)
+	assert.NotEmpty(t, result.ShortCode)
+}
+
+func TestCreateShortURL_UnsafeURLIsBlocked(t *testing.T) {
+	svc, mr := newTestService(
+		t,
+		nil,
+		stubScanner{err: errors.New("flagged")},
+	)
+	defer mr.Close()
+
+	_, err := svc.CreateShortURL("https://malware.example", 1)
+
+	assert.ErrorIs(t, err, ErrUnsafeURL)
 }

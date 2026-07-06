@@ -64,12 +64,16 @@ func ValidateToken(
 		token.Claims.(jwt.MapClaims); ok &&
 		token.Valid {
 
-		userID :=
-			uint(
-				claims["user_id"].(float64),
-			)
+		userIDFloat, ok :=
+			claims["user_id"].(float64)
 
-		return userID, nil
+		if !ok {
+
+			return 0,
+				jwt.ErrTokenInvalidClaims
+		}
+
+		return uint(userIDFloat), nil
 	}
 
 	return 0, jwt.ErrTokenInvalidClaims

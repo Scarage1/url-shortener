@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
@@ -20,6 +21,9 @@ type Config struct {
 	RedisURL  string
 	JWTSecret string
 	BaseURL   string
+
+	GoogleSafeBrowsingAPIKey string
+	BlockedDomains           []string
 }
 
 var knownWeakSecrets = map[string]bool{
@@ -68,6 +72,12 @@ func LoadConfig() (Config, error) {
 		JWTSecret: viper.GetString("JWT_SECRET"),
 
 		BaseURL: viper.GetString("BASE_URL"),
+
+		GoogleSafeBrowsingAPIKey: viper.GetString("GOOGLE_SAFE_BROWSING_API_KEY"),
+
+		BlockedDomains: splitCSV(
+			viper.GetString("BLOCKED_DOMAINS"),
+		),
 	}
 
 	if err := validate(cfg); err != nil {
@@ -92,4 +102,23 @@ func validate(cfg Config) error {
 	}
 
 	return nil
+}
+
+func splitCSV(raw string) []string {
+
+	if raw == "" {
+		return nil
+	}
+
+	parts := strings.Split(raw, ",")
+	values := make([]string, 0, len(parts))
+
+	for _, part := range parts {
+		value := strings.TrimSpace(part)
+		if value != "" {
+			values = append(values, value)
+		}
+	}
+
+	return values
 }

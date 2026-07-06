@@ -2,15 +2,19 @@ package service
 
 import (
 	"context"
+	"errors"
 	"log"
 	"strings"
 	"time"
 
 	"github.com/Scarage1/url-shortener/internal/model"
+	"github.com/Scarage1/url-shortener/internal/security"
 	"github.com/Scarage1/url-shortener/internal/utils"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
+
+var ErrUnsafeURL = errors.New("unsafe URL")
 
 // urlRepository is the minimal interface the service needs from the data layer.
 // *repository.URLRepository satisfies it automatically — no changes needed in callers.
@@ -26,15 +30,21 @@ type urlRepository interface {
 }
 
 type URLService struct {
-	Repo  urlRepository
-	Redis *redis.Client
+	Repo    urlRepository
+	Redis   *redis.Client
+	Scanner security.URLScanner
 }
 
-func NewURLService(repo urlRepository, redis *redis.Client) *URLService {
+func NewURLService(
+	repo urlRepository,
+	redis *redis.Client,
+	scanner security.URLScanner,
+) *URLService {
 
 	return &URLService{
-		Repo:  repo,
-		Redis: redis,
+		Repo:    repo,
+		Redis:   redis,
+		Scanner: scanner,
 	}
 }
 
@@ -163,6 +173,13 @@ func (s *URLService) CreateShortURL(
 	originalURL string,
 	userID uint,
 ) (*model.URL, error) {
+
+	if s.Scanner != nil {
+		err := s.Scanner.Check(originalURL)
+		if err != nil {
+			return nil, ErrUnsafeURL
+		}
+	}
 
 	existingURL, err :=
 		s.Repo.FindByOriginalURL(

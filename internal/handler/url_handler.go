@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/Scarage1/url-shortener/internal/service"
@@ -90,6 +91,18 @@ func (h *URLHandler) ShortenURL(c *gin.Context) {
 		)
 
 	if err != nil {
+
+		if errors.Is(err, service.ErrUnsafeURL) {
+
+			c.JSON(
+				http.StatusBadRequest,
+				gin.H{
+					"error": "unsafe URL",
+				},
+			)
+
+			return
+		}
 
 		c.JSON(
 			http.StatusInternalServerError,
