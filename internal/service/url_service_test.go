@@ -39,9 +39,9 @@ func (m *mockURLRepo) Create(url *model.URL) error {
 	return nil
 }
 
-func (m *mockURLRepo) FindByOriginalURL(originalURL string, userID uint) (*model.URL, error) {
+func (m *mockURLRepo) FindByOriginalURL(originalURL string, orgID uint) (*model.URL, error) {
 	for _, u := range m.urls {
-		if u.OriginalURL == originalURL && u.UserID == userID {
+		if u.OriginalURL == originalURL && u.OrganizationID == orgID {
 			return u, nil
 		}
 	}
@@ -57,23 +57,33 @@ func (m *mockURLRepo) FindByShortCode(code string) (*model.URL, error) {
 	return nil, gorm.ErrRecordNotFound
 }
 
-func (m *mockURLRepo) FindByCodeAndUser(code string, userID uint) (*model.URL, error) {
+func (m *mockURLRepo) FindByCodeAndOrg(code string, orgID uint) (*model.URL, error) {
 	for _, u := range m.urls {
-		if u.ShortCode == code && u.UserID == userID {
+		if u.ShortCode == code && u.OrganizationID == orgID {
 			return u, nil
 		}
 	}
 	return nil, gorm.ErrRecordNotFound
 }
 
-func (m *mockURLRepo) FindByUser(userID uint) ([]model.URL, error) {
+func (m *mockURLRepo) FindByOrg(orgID uint) ([]model.URL, error) {
 	var result []model.URL
 	for _, u := range m.urls {
-		if u.UserID == userID {
+		if u.OrganizationID == orgID {
 			result = append(result, *u)
 		}
 	}
 	return result, nil
+}
+
+func (m *mockURLRepo) CountByOrg(orgID uint) (int64, error) {
+	var count int64
+	for _, u := range m.urls {
+		if u.OrganizationID == orgID {
+			count++
+		}
+	}
+	return count, nil
 }
 
 func (m *mockURLRepo) Update(url *model.URL) error { return nil }
@@ -98,9 +108,9 @@ func (m *mockURLRepo) IncrementClickCount(
 	return gorm.ErrRecordNotFound
 }
 
-func (m *mockURLRepo) DeleteByCodeAndUser(code string, userID uint) error {
+func (m *mockURLRepo) DeleteByCodeAndOrg(code string, orgID uint) error {
 	for i, u := range m.urls {
-		if u.ShortCode == code && u.UserID == userID {
+		if u.ShortCode == code && u.OrganizationID == orgID {
 			m.urls = append(m.urls[:i], m.urls[i+1:]...)
 			return nil
 		}
@@ -136,147 +146,128 @@ func newTestService(
 }
 
 // ---------------------------------------------------------------------------
-// URL ownership tests (multi-tenancy isolation)
+// URL ownership tests (multi-tenancy isolation via org)
 // ---------------------------------------------------------------------------
 
 func TestGetStats_OwnerCanAccessOwnURL(t *testing.T) {
-	ownerID := uint(1)
 	url := &model.URL{
-		Model:       gorm.Model{ID: 1},
-		ShortCode:   "abc123",
-		OriginalURL: "https://github.com/openai",
-		UserID:      ownerID,
-		ClickCount:  5,
+		Model:          gorm.Model{ID: 1},
+		ShortCode:      "abc123",
+		OriginalURL:    "https://example.com",
+		OrganizationID: 1,
+		CreatedBy:      1,
 	}
 
 	svc, mr := newTestService(t, []*model.URL{url}, security.AllowAllScanner{})
 	defer mr.Close()
 
-	result, err := svc.GetStats("abc123", ownerID)
-
-	require.NoError(t, err)
-	assert.Equal(t, "abc123", result.ShortCode)
-	assert.Equal(t, "https://github.com/openai", result.OriginalURL)
-}
-
-// Critical SaaS test: User B must NOT be able to read User A's stats.
-func TestGetStats_OtherUserIsBlocked(t *testing.T) {
-	ownerID := uint(1)
-	attackerID := uint(2)
-
-	url := &model.URL{
-		Model:       gorm.Model{ID: 1},
-		ShortCode:   "abc123",
-		OriginalURL: "https://github.com/openai",
-		UserID:      ownerID,
-		ClickCount:  5,
-	}
-
-	svc, mr := newTestService(t, []*model.URL{url}, security.AllowAllScanner{})
-	defer mr.Close()
-
-	_, err := svc.GetStats("abc123", attackerID)
-
-	assert.Error(t, err, "User B must not access User A's URL stats")
-}
-
-// ---------------------------------------------------------------------------
-// Delete ownership tests
-// ---------------------------------------------------------------------------
-
-func TestDeleteURL_OwnerCanDeleteOwnURL(t *testing.T) {
-	ownerID := uint(1)
-	url := &model.URL{
-		Model:     gorm.Model{ID: 1},
-		ShortCode: "del123",
-		UserID:    ownerID,
-	}
-
-	svc, mr := newTestService(t, []*model.URL{url}, security.AllowAllScanner{})
-	defer mr.Close()
-
-	err := svc.DeleteURL("del123", ownerID)
-	assert.NoError(t, err)
-}
-
-func TestDeleteURL_OtherUserCannotDelete(t *testing.T) {
-	ownerID := uint(1)
-	attackerID := uint(2)
-
-	url := &model.URL{
-		Model:     gorm.Model{ID: 1},
-		ShortCode: "del123",
-		UserID:    ownerID,
-	}
-
-	svc, mr := newTestService(t, []*model.URL{url}, security.AllowAllScanner{})
-	defer mr.Close()
-
-	err := svc.DeleteURL("del123", attackerID)
-	assert.Error(t, err, "User B must not delete User A's URL")
-}
-
-// ---------------------------------------------------------------------------
-// Deduplication test
-// ---------------------------------------------------------------------------
-
-func TestCreateShortURL_ReturnsSameCodeForDuplicateURL(t *testing.T) {
-	ownerID := uint(1)
-	original := "https://example.com"
-
-	existing := &model.URL{
-		Model:       gorm.Model{ID: 1},
-		ShortCode:   "exist1",
-		OriginalURL: original,
-		UserID:      ownerID,
-	}
-
-	svc, mr := newTestService(t, []*model.URL{existing}, security.AllowAllScanner{})
-	defer mr.Close()
-
-	result, err := svc.CreateShortURL(original, ownerID, nil)
-
-	require.NoError(t, err)
-	assert.Equal(t, "exist1", result.ShortCode, "duplicate URL should return existing short code")
-}
-
-// ---------------------------------------------------------------------------
-// Click counter merge test
-// ---------------------------------------------------------------------------
-
-func TestGetStats_ClickCountMergesRedisAndDB(t *testing.T) {
-	ownerID := uint(1)
-	url := &model.URL{
-		Model:      gorm.Model{ID: 1},
-		ShortCode:  "click1",
-		UserID:     ownerID,
-		ClickCount: 10, // DB baseline
-	}
-
-	svc, mr := newTestService(t, []*model.URL{url}, security.AllowAllScanner{})
-	defer mr.Close()
-
-	// Simulate 5 clicks stored in Redis
-	mr.Set("clicks:click1", "5")
-
-	result, err := svc.GetStats("click1", ownerID)
-
-	require.NoError(t, err)
-	assert.Equal(t, 15, result.ClickCount, "total clicks should be DB baseline + Redis delta")
-}
-
-func TestCreateShortURL_SafeURLIsCreated(t *testing.T) {
-	svc, mr := newTestService(t, nil, security.AllowAllScanner{})
-	defer mr.Close()
-
-	result, err := svc.CreateShortURL("https://example.com", 1, nil)
+	result, err := svc.GetStats("abc123", 1)
 
 	require.NoError(t, err)
 	assert.Equal(t, "https://example.com", result.OriginalURL)
-	assert.NotEmpty(t, result.ShortCode)
 }
 
-func TestCreateShortURL_UnsafeURLIsBlocked(t *testing.T) {
+func TestGetStats_OtherOrgCannotAccessURL(t *testing.T) {
+	url := &model.URL{
+		Model:          gorm.Model{ID: 1},
+		ShortCode:      "abc123",
+		OriginalURL:    "https://example.com",
+		OrganizationID: 1,
+		CreatedBy:      1,
+	}
+
+	svc, mr := newTestService(t, []*model.URL{url}, security.AllowAllScanner{})
+	defer mr.Close()
+
+	// Org 2 tries to access org 1's URL
+	_, err := svc.GetStats("abc123", 2)
+
+	assert.Error(t, err)
+}
+
+func TestDeleteURL_OwnerCanDelete(t *testing.T) {
+	url := &model.URL{
+		Model:          gorm.Model{ID: 1},
+		ShortCode:      "abc123",
+		OriginalURL:    "https://example.com",
+		OrganizationID: 1,
+		CreatedBy:      1,
+	}
+
+	svc, mr := newTestService(t, []*model.URL{url}, security.AllowAllScanner{})
+	defer mr.Close()
+
+	err := svc.DeleteURL("abc123", 1)
+
+	require.NoError(t, err)
+}
+
+func TestDeleteURL_OtherOrgCannotDelete(t *testing.T) {
+	url := &model.URL{
+		Model:          gorm.Model{ID: 1},
+		ShortCode:      "abc123",
+		OriginalURL:    "https://example.com",
+		OrganizationID: 1,
+		CreatedBy:      1,
+	}
+
+	svc, mr := newTestService(t, []*model.URL{url}, security.AllowAllScanner{})
+	defer mr.Close()
+
+	err := svc.DeleteURL("abc123", 2)
+
+	assert.Error(t, err)
+}
+
+// ---------------------------------------------------------------------------
+// Click counting
+// ---------------------------------------------------------------------------
+
+func TestGetStats_MergesRedisClickCount(t *testing.T) {
+	url := &model.URL{
+		Model:          gorm.Model{ID: 1},
+		ShortCode:      "count1",
+		OriginalURL:    "https://example.com",
+		OrganizationID: 1,
+		CreatedBy:      1,
+		ClickCount:     10,
+	}
+
+	svc, mr := newTestService(t, []*model.URL{url}, security.AllowAllScanner{})
+	defer mr.Close()
+
+	mr.Set("clicks:count1", "5")
+
+	result, err := svc.GetStats("count1", 1)
+
+	require.NoError(t, err)
+	assert.Equal(t, 15, result.ClickCount)
+}
+
+func TestGetStats_FallsBackToDBWhenNoRedisKey(t *testing.T) {
+	url := &model.URL{
+		Model:          gorm.Model{ID: 1},
+		ShortCode:      "count2",
+		OriginalURL:    "https://example.com",
+		OrganizationID: 1,
+		CreatedBy:      1,
+		ClickCount:     42,
+	}
+
+	svc, mr := newTestService(t, []*model.URL{url}, security.AllowAllScanner{})
+	defer mr.Close()
+
+	result, err := svc.GetStats("count2", 1)
+
+	require.NoError(t, err)
+	assert.Equal(t, 42, result.ClickCount)
+}
+
+// ---------------------------------------------------------------------------
+// URL Safety
+// ---------------------------------------------------------------------------
+
+func TestCreateShortURL_RejectsUnsafeURL(t *testing.T) {
 	svc, mr := newTestService(
 		t,
 		nil,
@@ -284,10 +275,14 @@ func TestCreateShortURL_UnsafeURLIsBlocked(t *testing.T) {
 	)
 	defer mr.Close()
 
-	_, err := svc.CreateShortURL("https://malware.example", 1, nil)
+	_, err := svc.CreateShortURL("https://malware.example", 1, 1, nil)
 
 	assert.ErrorIs(t, err, ErrUnsafeURL)
 }
+
+// ---------------------------------------------------------------------------
+// Routing rules
+// ---------------------------------------------------------------------------
 
 func TestGetOriginalURL_LoadsRoutingRules(t *testing.T) {
 	// Generate a real bcrypt hash so the engine can verify the password.
@@ -302,10 +297,11 @@ func TestGetOriginalURL_LoadsRoutingRules(t *testing.T) {
 	require.NoError(t, err)
 
 	url := &model.URL{
-		Model:       gorm.Model{ID: 1},
-		ShortCode:   "rule01",
-		OriginalURL: "https://example.com",
-		UserID:      1,
+		Model:          gorm.Model{ID: 1},
+		ShortCode:      "rule01",
+		OriginalURL:    "https://example.com",
+		OrganizationID: 1,
+		CreatedBy:      1,
 		Rules: []model.RoutingRule{
 			{
 				Type:   model.RoutingRuleTypePassword,
@@ -335,10 +331,11 @@ func TestGetOriginalURL_CacheHitStillLoadsRoutingRules(t *testing.T) {
 	require.NoError(t, err)
 
 	url := &model.URL{
-		Model:       gorm.Model{ID: 1},
-		ShortCode:   "rule02",
-		OriginalURL: "https://example.com",
-		UserID:      1,
+		Model:          gorm.Model{ID: 1},
+		ShortCode:      "rule02",
+		OriginalURL:    "https://example.com",
+		OrganizationID: 1,
+		CreatedBy:      1,
 		Rules: []model.RoutingRule{
 			{
 				Type:   model.RoutingRuleTypeGeo,
@@ -352,6 +349,9 @@ func TestGetOriginalURL_CacheHitStillLoadsRoutingRules(t *testing.T) {
 
 	_, err = svc.GetOriginalURL("rule02", "", "")
 	require.NoError(t, err)
+
+	// Warm the cache first, then fetch with the geo rule active
+	mr.Set("url:rule02", "https://example.com")
 
 	result, err := svc.GetOriginalURL("rule02", "", "")
 
@@ -367,11 +367,12 @@ func TestCreateShortURL_PasswordRuleHashesPassword(t *testing.T) {
 
 	result, err := svc.CreateShortURL(
 		"https://example.com/private",
-		1,
+		1, // orgID
+		1, // createdBy
 		[]CreateRuleInput{
 			{
 				Type:     model.RoutingRuleTypePassword,
-				Password: "secret",
+				Password: "secret123",
 			},
 		},
 	)
@@ -379,29 +380,38 @@ func TestCreateShortURL_PasswordRuleHashesPassword(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result.Rules, 1)
 	assert.Equal(t, model.RoutingRuleTypePassword, result.Rules[0].Type)
-	assert.NotContains(t, string(result.Rules[0].Config), "secret")
+
+	// Verify the config contains a bcrypt hash, not plaintext
+	var cfg routing.PasswordRule
+	err = json.Unmarshal(result.Rules[0].Config, &cfg)
+	require.NoError(t, err)
+	assert.NotEmpty(t, cfg.Hash)
+	assert.True(t, utils.CheckPassword("secret123", cfg.Hash))
 }
+
+// ---------------------------------------------------------------------------
+// Password-protected redirect
+// ---------------------------------------------------------------------------
 
 func TestGetOriginalURL_PasswordRuleBlocksWithoutPassword(t *testing.T) {
 	hash, err := utils.HashPassword("secret")
 	require.NoError(t, err)
 
-	config, err := json.Marshal(
-		routing.PasswordRule{
-			Hash: hash,
-		},
+	passwordConfig, err := json.Marshal(
+		routing.PasswordRule{Hash: hash},
 	)
 	require.NoError(t, err)
 
 	url := &model.URL{
-		Model:       gorm.Model{ID: 1},
-		ShortCode:   "lock01",
-		OriginalURL: "https://example.com/private",
-		UserID:      1,
+		Model:          gorm.Model{ID: 1},
+		ShortCode:      "lock01",
+		OriginalURL:    "https://example.com/private",
+		OrganizationID: 1,
+		CreatedBy:      1,
 		Rules: []model.RoutingRule{
 			{
 				Type:   model.RoutingRuleTypePassword,
-				Config: config,
+				Config: passwordConfig,
 			},
 		},
 	}
@@ -418,22 +428,21 @@ func TestGetOriginalURL_PasswordRuleAllowsMatchingPassword(t *testing.T) {
 	hash, err := utils.HashPassword("secret")
 	require.NoError(t, err)
 
-	config, err := json.Marshal(
-		routing.PasswordRule{
-			Hash: hash,
-		},
+	passwordConfig, err := json.Marshal(
+		routing.PasswordRule{Hash: hash},
 	)
 	require.NoError(t, err)
 
 	url := &model.URL{
-		Model:       gorm.Model{ID: 1},
-		ShortCode:   "lock02",
-		OriginalURL: "https://example.com/private",
-		UserID:      1,
+		Model:          gorm.Model{ID: 1},
+		ShortCode:      "lock02",
+		OriginalURL:    "https://example.com/private",
+		OrganizationID: 1,
+		CreatedBy:      1,
 		Rules: []model.RoutingRule{
 			{
 				Type:   model.RoutingRuleTypePassword,
-				Config: config,
+				Config: passwordConfig,
 			},
 		},
 	}

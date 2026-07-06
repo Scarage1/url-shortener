@@ -26,3 +26,22 @@ func GetUserID(c *gin.Context) (uint, error) {
 
 	return userID, nil
 }
+
+// GetOrgID extracts the org_id set by AuthMiddleware.
+// The auth middleware resolves user → org membership on every request.
+func GetOrgID(c *gin.Context) (uint, error) {
+
+	orgIDValue, exists := c.Get("org_id")
+
+	if !exists {
+		return 0, errors.New("org_id not found in context")
+	}
+
+	orgID, ok := orgIDValue.(uint)
+
+	if !ok {
+		return 0, errors.New("org_id has unexpected type")
+	}
+
+	return orgID, nil
+}

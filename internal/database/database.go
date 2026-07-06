@@ -34,10 +34,24 @@ func Connect(cfg config.Config) (*gorm.DB, error) {
 		&model.User{},
 		&model.URL{},
 		&model.RoutingRule{},
+		&model.Plan{},
+		&model.Organization{},
+		&model.OrganizationMember{},
+		&model.Subscription{},
 	)
 
 	if err != nil {
 		return nil, fmt.Errorf("auto-migrate: %w", err)
+	}
+
+	// Seed pricing tiers (idempotent)
+	if err := SeedPlans(db); err != nil {
+		return nil, fmt.Errorf("seed plans: %w", err)
+	}
+
+	// Create default workspaces for any existing users without orgs (idempotent)
+	if err := MigrateExistingUsers(db); err != nil {
+		return nil, fmt.Errorf("migrate existing users: %w", err)
 	}
 
 	return db, nil

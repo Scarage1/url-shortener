@@ -26,9 +26,9 @@ type ShortenRequest struct {
 type ShortenRuleRequest struct {
 	Type       string            `json:"type"`
 	Password   string            `json:"password"`
-	ActiveFrom string            `json:"active_from"` // ISO 8601 e.g. "2026-07-10T00:00:00Z"
-	ExpiresAt  string            `json:"expires_at"`  // ISO 8601
-	GeoRoutes  map[string]string `json:"geo_routes"`  // country_code → URL
+	ActiveFrom string            `json:"active_from"`
+	ExpiresAt  string            `json:"expires_at"`
+	GeoRoutes  map[string]string `json:"geo_routes"`
 }
 
 type ShortenResponse struct {
@@ -58,35 +58,20 @@ func (h *URLHandler) RedirectURL(c *gin.Context) {
 
 		switch {
 		case errors.Is(err, service.ErrPasswordRequired):
-			c.JSON(
-				http.StatusUnauthorized,
-				gin.H{"error": "password required"},
-			)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "password required"})
 			return
 		case errors.Is(err, service.ErrInvalidPassword):
-			c.JSON(
-				http.StatusUnauthorized,
-				gin.H{"error": "invalid password"},
-			)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid password"})
 			return
 		case errors.Is(err, service.ErrNotYetActive):
-			c.JSON(
-				http.StatusForbidden,
-				gin.H{"error": "link not yet active"},
-			)
+			c.JSON(http.StatusForbidden, gin.H{"error": "link not yet active"})
 			return
 		case errors.Is(err, service.ErrExpired):
-			c.JSON(
-				http.StatusGone,
-				gin.H{"error": "link has expired"},
-			)
+			c.JSON(http.StatusGone, gin.H{"error": "link has expired"})
 			return
 		}
 
-		c.JSON(
-			http.StatusNotFound,
-			gin.H{"error": "URL not found"},
-		)
+		c.JSON(http.StatusNotFound, gin.H{"error": "URL not found"})
 		return
 	}
 
@@ -98,47 +83,35 @@ func (h *URLHandler) ShortenURL(c *gin.Context) {
 	var req ShortenRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(
-			http.StatusBadRequest,
-			gin.H{"error": "invalid URL"},
-		)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid URL"})
 		return
 	}
 
-	userID, err := utils.GetUserID(c)
+	orgID, err := utils.GetOrgID(c)
 	if err != nil {
-		c.JSON(
-			http.StatusUnauthorized,
-			gin.H{"error": "unauthorized"},
-		)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
+
+	userID, _ := utils.GetUserID(c)
 
 	url, err := h.Service.CreateShortURL(
 		req.URL,
+		orgID,
 		userID,
 		toCreateRuleInputs(req.Rules),
 	)
 
 	if err != nil {
 		if errors.Is(err, service.ErrUnsafeURL) {
-			c.JSON(
-				http.StatusBadRequest,
-				gin.H{"error": "unsafe URL"},
-			)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "unsafe URL"})
 			return
 		}
 		if errors.Is(err, service.ErrInvalidRule) {
-			c.JSON(
-				http.StatusBadRequest,
-				gin.H{"error": "invalid rules"},
-			)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid rules"})
 			return
 		}
-		c.JSON(
-			http.StatusInternalServerError,
-			gin.H{"error": err.Error()},
-		)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -189,21 +162,15 @@ func (h *URLHandler) GetStats(c *gin.Context) {
 
 	code := c.Param("code")
 
-	userID, err := utils.GetUserID(c)
+	orgID, err := utils.GetOrgID(c)
 	if err != nil {
-		c.JSON(
-			http.StatusUnauthorized,
-			gin.H{"error": "unauthorized"},
-		)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
 
-	url, err := h.Service.GetStats(code, userID)
+	url, err := h.Service.GetStats(code, orgID)
 	if err != nil {
-		c.JSON(
-			http.StatusNotFound,
-			gin.H{"error": "URL not found"},
-		)
+		c.JSON(http.StatusNotFound, gin.H{"error": "URL not found"})
 		return
 	}
 
@@ -221,21 +188,15 @@ func (h *URLHandler) GetStats(c *gin.Context) {
 
 func (h *URLHandler) GetUserLinks(c *gin.Context) {
 
-	userID, err := utils.GetUserID(c)
+	orgID, err := utils.GetOrgID(c)
 	if err != nil {
-		c.JSON(
-			http.StatusUnauthorized,
-			gin.H{"error": "unauthorized"},
-		)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
 
-	urls, err := h.Service.GetUserLinks(userID)
+	urls, err := h.Service.GetOrgLinks(orgID)
 	if err != nil {
-		c.JSON(
-			http.StatusInternalServerError,
-			gin.H{"error": err.Error()},
-		)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -246,21 +207,15 @@ func (h *URLHandler) DeleteURL(c *gin.Context) {
 
 	code := c.Param("code")
 
-	userID, err := utils.GetUserID(c)
+	orgID, err := utils.GetOrgID(c)
 	if err != nil {
-		c.JSON(
-			http.StatusUnauthorized,
-			gin.H{"error": "unauthorized"},
-		)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
 
-	err = h.Service.DeleteURL(code, userID)
+	err = h.Service.DeleteURL(code, orgID)
 	if err != nil {
-		c.JSON(
-			http.StatusNotFound,
-			gin.H{"error": "URL not found"},
-		)
+		c.JSON(http.StatusNotFound, gin.H{"error": "URL not found"})
 		return
 	}
 
@@ -268,29 +223,20 @@ func (h *URLHandler) DeleteURL(c *gin.Context) {
 }
 
 // ---------------------------------------------------------------------------
-// Phase 23E — CSV Import / Export
+// CSV Import / Export
 // ---------------------------------------------------------------------------
 
-// ExportLinks streams the authenticated user's links as a CSV file.
-//
-//	GET /api/v1/export
 func (h *URLHandler) ExportLinks(c *gin.Context) {
 
-	userID, err := utils.GetUserID(c)
+	orgID, err := utils.GetOrgID(c)
 	if err != nil {
-		c.JSON(
-			http.StatusUnauthorized,
-			gin.H{"error": "unauthorized"},
-		)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
 
-	urls, err := h.Service.GetUserLinks(userID)
+	urls, err := h.Service.GetOrgLinks(orgID)
 	if err != nil {
-		c.JSON(
-			http.StatusInternalServerError,
-			gin.H{"error": err.Error()},
-		)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -299,7 +245,6 @@ func (h *URLHandler) ExportLinks(c *gin.Context) {
 
 	w := csv.NewWriter(c.Writer)
 
-	// Header row
 	_ = w.Write([]string{
 		"short_code",
 		"original_url",
@@ -319,43 +264,28 @@ func (h *URLHandler) ExportLinks(c *gin.Context) {
 	w.Flush()
 }
 
-// ImportLinks reads a multipart CSV file and batch-creates short URLs.
-//
-//	POST /api/v1/import   (form-data key: "file")
-//
-// Each non-header row must have at least one column: the original URL.
-// The second column (short_code) is ignored — new codes are generated.
-// Returns a JSON summary: { created, skipped, failed }.
 func (h *URLHandler) ImportLinks(c *gin.Context) {
 
-	userID, err := utils.GetUserID(c)
+	orgID, err := utils.GetOrgID(c)
 	if err != nil {
-		c.JSON(
-			http.StatusUnauthorized,
-			gin.H{"error": "unauthorized"},
-		)
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
 
+	userID, _ := utils.GetUserID(c)
+
 	file, _, err := c.Request.FormFile("file")
 	if err != nil {
-		c.JSON(
-			http.StatusBadRequest,
-			gin.H{"error": "file is required (multipart key: file)"},
-		)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "file is required (multipart key: file)"})
 		return
 	}
 	defer file.Close()
 
 	reader := csv.NewReader(file)
-	reader.FieldsPerRecord = -1 // allow variable columns
+	reader.FieldsPerRecord = -1
 
-	// Skip header row
 	if _, err := reader.Read(); err != nil {
-		c.JSON(
-			http.StatusBadRequest,
-			gin.H{"error": "CSV must have at least a header row"},
-		)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "CSV must have at least a header row"})
 		return
 	}
 
@@ -377,12 +307,11 @@ func (h *URLHandler) ImportLinks(c *gin.Context) {
 
 		originalURL := record[0]
 
-		_, err = h.Service.CreateShortURL(originalURL, userID, nil)
+		_, err = h.Service.CreateShortURL(originalURL, orgID, userID, nil)
 		if err != nil {
 			if errors.Is(err, service.ErrUnsafeURL) {
 				failed++
 			} else {
-				// Duplicate URL → returns the existing code (skipped, not an error)
 				skipped++
 			}
 			continue

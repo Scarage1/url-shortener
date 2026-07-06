@@ -26,16 +26,16 @@ func (r *URLRepository) Create(url *model.URL) error {
 
 func (r *URLRepository) FindByOriginalURL(
 	originalURL string,
-	userID uint,
+	orgID uint,
 ) (*model.URL, error) {
 
 	var url model.URL
 
 	err :=
 		r.DB.Where(
-			"original_url = ? AND user_id = ?",
+			"original_url = ? AND organization_id = ?",
 			originalURL,
-			userID,
+			orgID,
 		).First(
 			&url,
 		).Error
@@ -59,18 +59,18 @@ func (r *URLRepository) FindByShortCode(code string) (*model.URL, error) {
 	return &url, nil
 }
 
-func (r *URLRepository) FindByCodeAndUser(
+func (r *URLRepository) FindByCodeAndOrg(
 	code string,
-	userID uint,
+	orgID uint,
 ) (*model.URL, error) {
 
 	var url model.URL
 
 	err :=
 		r.DB.Where(
-			"short_code = ? AND user_id = ?",
+			"short_code = ? AND organization_id = ?",
 			code,
-			userID,
+			orgID,
 		).Preload(
 			"Rules",
 		).First(
@@ -80,16 +80,16 @@ func (r *URLRepository) FindByCodeAndUser(
 	return &url, err
 }
 
-func (r *URLRepository) FindByUser(
-	userID uint,
+func (r *URLRepository) FindByOrg(
+	orgID uint,
 ) ([]model.URL, error) {
 
 	var urls []model.URL
 
 	err :=
 		r.DB.Where(
-			"user_id = ?",
-			userID,
+			"organization_id = ?",
+			orgID,
 		).
 			Order(
 				"created_at DESC",
@@ -99,6 +99,17 @@ func (r *URLRepository) FindByUser(
 			).Error
 
 	return urls, err
+}
+
+func (r *URLRepository) CountByOrg(orgID uint) (int64, error) {
+
+	var count int64
+
+	err := r.DB.Model(&model.URL{}).
+		Where("organization_id = ?", orgID).
+		Count(&count).Error
+
+	return count, err
 }
 
 func (r *URLRepository) Update(
@@ -126,16 +137,16 @@ func (r *URLRepository) IncrementClickCount(
 		}).Error
 }
 
-func (r *URLRepository) DeleteByCodeAndUser(
+func (r *URLRepository) DeleteByCodeAndOrg(
 	code string,
-	userID uint,
+	orgID uint,
 ) error {
 
 	result :=
 		r.DB.Where(
-			"short_code = ? AND user_id = ?",
+			"short_code = ? AND organization_id = ?",
 			code,
-			userID,
+			orgID,
 		).
 			Delete(
 				&model.URL{},

@@ -37,19 +37,28 @@ func SetupRouter(
 		})
 	})
 
+	// --- Services ---
+
+	orgService := service.NewOrgService(db)
+	quotaService := service.NewQuotaService(db, redisClient)
+
 	userRepo :=
 		repository.NewUserRepository(db)
 
 	authService :=
 		service.NewAuthService(
 			userRepo,
+			orgService,
 			cfg.JWTSecret,
+			db,
 		)
 
 	authHandler :=
 		handler.NewAuthHandler(
 			authService,
 		)
+
+	planHandler := handler.NewPlanHandler(quotaService)
 
 	urlRepo := repository.NewURLRepository(db)
 	urlScanner := security.NewChainScanner(
@@ -71,21 +80,20 @@ func SetupRouter(
 		cfg.BaseURL,
 	)
 
+	// --- Routes ---
+
 	api := r.Group("/api/v1")
 
 	api.Use(
-		middleware.RateLimiter(
-			redisClient,
-		),
+		middleware.RateLimiter(redisClient),
 	)
 
-	auth :=
-		api.Group(
-			"/auth",
-		)
+	// Auth routes (public)
+	auth := api.Group("/auth")
 
 	auth.POST(
 		"/register",
+		middleware.SignupLimiter(redisClient),
 		authHandler.Register,
 	)
 
@@ -94,45 +102,31 @@ func SetupRouter(
 		authHandler.Login,
 	)
 
-	protected :=
-		api.Group(
-			"",
-		)
+	// Protected routes (require JWT + org membership)
+	protected := api.Group("")
 
 	protected.Use(
-		middleware.AuthMiddleware(cfg.JWTSecret),
+		middleware.AuthMiddleware(cfg.JWTSecret, orgService, db),
+		middleware.PlanRateLimiter(redisClient),
 	)
 
-	protected.POST(
-		"/shorten",
-		urlHandler.ShortenURL,
-	)
+	// Read-only (no email verification needed)
+	protected.GET("/plan", planHandler.GetPlan)
+	protected.GET("/usage", planHandler.GetUsage)
+	protected.GET("/stats/:code", urlHandler.GetStats)
+	protected.GET("/links", urlHandler.GetUserLinks)
 
-	protected.GET(
-		"/stats/:code",
-		urlHandler.GetStats,
-	)
+	// Write operations (require verified email)
+	verified := protected.Group("")
+	verified.Use(middleware.EmailVerified())
 
-	protected.GET(
-		"/links",
-		urlHandler.GetUserLinks,
-	)
+	verified.POST("/shorten", urlHandler.ShortenURL)
+	verified.DELETE("/links/:code", urlHandler.DeleteURL)
+	verified.GET("/export", urlHandler.ExportLinks)
+	verified.POST("/import", urlHandler.ImportLinks)
 
-	protected.DELETE(
-		"/links/:code",
-		urlHandler.DeleteURL,
-	)
-
-	protected.GET(
-		"/export",
-		urlHandler.ExportLinks,
-	)
-
-	protected.POST(
-		"/import",
-		urlHandler.ImportLinks,
-	)
-
+	// Public redirect (generous rate limit)
+	r.Use(middleware.PublicRateLimiter(redisClient))
 	r.GET("/:code", urlHandler.RedirectURL)
 
 	return r, urlService

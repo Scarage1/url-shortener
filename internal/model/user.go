@@ -11,5 +11,7 @@ type User struct {
 
 	PasswordHash string `gorm:"not null"`
 
+	EmailVerified bool `gorm:"default:false"`
+
 	URLs []URL
 }

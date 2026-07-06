@@ -36,12 +36,13 @@ type CreateRuleInput struct {
 // *repository.URLRepository satisfies it automatically — no changes needed in callers.
 type urlRepository interface {
 	Create(url *model.URL) error
-	FindByOriginalURL(originalURL string, userID uint) (*model.URL, error)
+	FindByOriginalURL(originalURL string, orgID uint) (*model.URL, error)
 	FindByShortCode(code string) (*model.URL, error)
-	FindByCodeAndUser(code string, userID uint) (*model.URL, error)
-	FindByUser(userID uint) ([]model.URL, error)
+	FindByCodeAndOrg(code string, orgID uint) (*model.URL, error)
+	FindByOrg(orgID uint) ([]model.URL, error)
+	CountByOrg(orgID uint) (int64, error)
 	Update(url *model.URL) error
-	DeleteByCodeAndUser(code string, userID uint) error
+	DeleteByCodeAndOrg(code string, orgID uint) error
 	IncrementClickCount(code string, delta int, accessedAt time.Time) error
 }
 
@@ -181,9 +182,10 @@ func (s *URLService) GetOriginalURL(
 	}
 
 	return &model.URL{
-		ShortCode:   url.ShortCode,
-		OriginalURL: destination,
-		Rules:       url.Rules,
+		ShortCode:      url.ShortCode,
+		OriginalURL:    destination,
+		OrganizationID: url.OrganizationID,
+		Rules:          url.Rules,
 	}, nil
 }
 
@@ -238,7 +240,8 @@ func (s *URLService) FlushClickCounts(ctx context.Context) error {
 
 func (s *URLService) CreateShortURL(
 	originalURL string,
-	userID uint,
+	orgID uint,
+	createdBy uint,
 	rules []CreateRuleInput,
 ) (*model.URL, error) {
 
@@ -253,7 +256,7 @@ func (s *URLService) CreateShortURL(
 		existingURL, err :=
 			s.Repo.FindByOriginalURL(
 				originalURL,
-				userID,
+				orgID,
 			)
 
 		if err == nil {
@@ -300,7 +303,9 @@ func (s *URLService) CreateShortURL(
 
 		OriginalURL: originalURL,
 
-		UserID: userID,
+		OrganizationID: orgID,
+
+		CreatedBy: createdBy,
 	}
 
 	urlRules, err := s.buildRoutingRules(rules)
@@ -391,16 +396,14 @@ func (s *URLService) buildRoutingRules(
 }
 
 // GetStats returns URL analytics with live click count merged from Redis.
-// The DB stores the persisted baseline; Redis holds the live delta since
-// the last page reload or server restart.
 func (s *URLService) GetStats(
 	code string,
-	userID uint,
+	orgID uint,
 ) (*model.URL, error) {
 
-	url, err := s.Repo.FindByCodeAndUser(
+	url, err := s.Repo.FindByCodeAndOrg(
 		code,
-		userID,
+		orgID,
 	)
 
 	if err != nil {
@@ -414,34 +417,32 @@ func (s *URLService) GetStats(
 	redisCount, err := s.Redis.Get(ctx, clickKey).Int()
 
 	if err == nil {
-		// Redis has a live delta — add it to the DB value
 		url.ClickCount += redisCount
 	}
-	// If Redis key is missing (expired/not yet set), fall back to DB value only
 
 	return url, nil
 }
 
-// GetUserLinks returns all URLs created by a user, ordered newest first.
-func (s *URLService) GetUserLinks(
-	userID uint,
+// GetOrgLinks returns all URLs created by an organization, ordered newest first.
+func (s *URLService) GetOrgLinks(
+	orgID uint,
 ) ([]model.URL, error) {
 
-	return s.Repo.FindByUser(
-		userID,
+	return s.Repo.FindByOrg(
+		orgID,
 	)
 }
 
-// DeleteURL removes a URL by short code, enforcing ownership.
+// DeleteURL removes a URL by short code, enforcing org ownership.
 // Also clears the Redis cache and click counter for the code.
 func (s *URLService) DeleteURL(
 	code string,
-	userID uint,
+	orgID uint,
 ) error {
 
-	err := s.Repo.DeleteByCodeAndUser(
+	err := s.Repo.DeleteByCodeAndOrg(
 		code,
-		userID,
+		orgID,
 	)
 
 	if err != nil {
