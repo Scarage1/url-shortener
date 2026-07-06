@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func Connect(cfg config.Config) *gorm.DB {
+func Connect(cfg config.Config) (*gorm.DB, error) {
 
 	dsn := fmt.Sprintf(
 		"host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
@@ -27,13 +27,8 @@ func Connect(cfg config.Config) *gorm.DB {
 	)
 
 	if err != nil {
-
-		panic(err)
+		return nil, fmt.Errorf("connect to postgres: %w", err)
 	}
-
-	fmt.Println(
-		"Connected to PostgreSQL",
-	)
 
 	err = db.AutoMigrate(
 		&model.User{},
@@ -41,13 +36,8 @@ func Connect(cfg config.Config) *gorm.DB {
 	)
 
 	if err != nil {
-
-		panic(err)
+		return nil, fmt.Errorf("auto-migrate: %w", err)
 	}
 
-	fmt.Println(
-		"Database migrated",
-	)
-
-	return db
+	return db, nil
 }

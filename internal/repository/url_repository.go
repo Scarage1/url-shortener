@@ -1,6 +1,8 @@
 package repository
 
 import (
+	"time"
+
 	"github.com/Scarage1/url-shortener/internal/model"
 
 	"gorm.io/gorm"
@@ -102,6 +104,24 @@ func (r *URLRepository) Update(
 ) error {
 
 	return r.DB.Save(url).Error
+}
+
+func (r *URLRepository) IncrementClickCount(
+	code string,
+	delta int,
+	accessedAt time.Time,
+) error {
+
+	if delta <= 0 {
+		return nil
+	}
+
+	return r.DB.Model(&model.URL{}).
+		Where("short_code = ?", code).
+		Updates(map[string]interface{}{
+			"click_count":   gorm.Expr("click_count + ?", delta),
+			"last_accessed": accessedAt,
+		}).Error
 }
 
 func (r *URLRepository) DeleteByCodeAndUser(

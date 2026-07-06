@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/Scarage1/url-shortener/internal/model"
@@ -21,6 +22,7 @@ type urlRepository interface {
 	FindByUser(userID uint) ([]model.URL, error)
 	Update(url *model.URL) error
 	DeleteByCodeAndUser(code string, userID uint) error
+	IncrementClickCount(code string, delta int, accessedAt time.Time) error
 }
 
 type URLService struct {
@@ -53,7 +55,6 @@ func (s *URLService) GetOriginalURL(
 
 	if err == nil {
 
-		// Increment Redis click counter
 		if err := s.Redis.Incr(
 			ctx,
 			clickKey,
@@ -64,17 +65,6 @@ func (s *URLService) GetOriginalURL(
 				err,
 			)
 		}
-
-		// Non-blocking DB update for LastAccessed
-		go func() {
-			url, dbErr := s.Repo.FindByShortCode(shortCode)
-			if dbErr != nil {
-				return
-			}
-			now := time.Now()
-			url.LastAccessed = &now
-			_ = s.Repo.Update(url)
-		}()
 
 		return &model.URL{
 			ShortCode:   shortCode,
@@ -117,17 +107,56 @@ func (s *URLService) GetOriginalURL(
 		)
 	}
 
-	// 5. Update LastAccessed in DB
+	return url, nil
+}
+
+func (s *URLService) FlushClickCounts(ctx context.Context) error {
+
+	var cursor uint64
 	now := time.Now()
-	url.LastAccessed = &now
-	if err := s.Repo.Update(url); err != nil {
-		log.Println(
-			"DB LastAccessed update error:",
-			err,
-		)
+
+	for {
+		keys, nextCursor, err := s.Redis.Scan(
+			ctx,
+			cursor,
+			"clicks:*",
+			100,
+		).Result()
+
+		if err != nil {
+			return err
+		}
+
+		for _, key := range keys {
+
+			code := strings.TrimPrefix(key, "clicks:")
+
+			val, err := s.Redis.GetDel(ctx, key).Int()
+
+			if err != nil {
+				if err != redis.Nil {
+					log.Println("flush: getdel error:", err)
+				}
+				continue
+			}
+
+			if val <= 0 {
+				continue
+			}
+
+			if err := s.Repo.IncrementClickCount(code, val, now); err != nil {
+				log.Println("flush: db increment error for", code, ":", err)
+				s.Redis.IncrBy(ctx, key, int64(val))
+			}
+		}
+
+		cursor = nextCursor
+		if cursor == 0 {
+			break
+		}
 	}
 
-	return url, nil
+	return nil
 }
 
 func (s *URLService) CreateShortURL(

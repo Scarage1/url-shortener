@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/joho/godotenv"
@@ -21,14 +22,22 @@ type Config struct {
 	BaseURL   string
 }
 
-func LoadConfig() Config {
+var knownWeakSecrets = map[string]bool{
+	"":           true,
+	"secret-key": true,
+	"change-me-to-a-long-random-secret-in-production": true,
+	"changeme": true,
+	"secret":   true,
+}
+
+func LoadConfig() (Config, error) {
 
 	err := godotenv.Load()
 
 	if err != nil {
 
 		log.Println(
-			"Failed to load .env:",
+			"No .env file loaded (this is expected in production):",
 			err,
 		)
 	}
@@ -40,7 +49,7 @@ func LoadConfig() Config {
 		"8080",
 	)
 
-	return Config{
+	cfg := Config{
 
 		Port: viper.GetString("PORT"),
 
@@ -60,4 +69,27 @@ func LoadConfig() Config {
 
 		BaseURL: viper.GetString("BASE_URL"),
 	}
+
+	if err := validate(cfg); err != nil {
+		return Config{}, err
+	}
+
+	return cfg, nil
+}
+
+func validate(cfg Config) error {
+
+	if knownWeakSecrets[cfg.JWTSecret] {
+		return fmt.Errorf(
+			"JWT_SECRET is empty or a known placeholder value; set a long, random secret via the environment before starting the server",
+		)
+	}
+
+	if len(cfg.JWTSecret) < 32 {
+		return fmt.Errorf(
+			"JWT_SECRET is too short (%d chars); use at least 32 random characters", len(cfg.JWTSecret),
+		)
+	}
+
+	return nil
 }

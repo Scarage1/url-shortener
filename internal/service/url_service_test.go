@@ -2,6 +2,7 @@ package service
 
 import (
 	"testing"
+	"time"
 
 	"github.com/Scarage1/url-shortener/internal/model"
 	"github.com/alicebob/miniredis/v2"
@@ -62,6 +63,26 @@ func (m *mockURLRepo) FindByUser(userID uint) ([]model.URL, error) {
 }
 
 func (m *mockURLRepo) Update(url *model.URL) error { return nil }
+
+func (m *mockURLRepo) IncrementClickCount(
+	code string,
+	delta int,
+	accessedAt time.Time,
+) error {
+	if delta <= 0 {
+		return nil
+	}
+
+	for _, u := range m.urls {
+		if u.ShortCode == code {
+			u.ClickCount += delta
+			u.LastAccessed = &accessedAt
+			return nil
+		}
+	}
+
+	return gorm.ErrRecordNotFound
+}
 
 func (m *mockURLRepo) DeleteByCodeAndUser(code string, userID uint) error {
 	for i, u := range m.urls {
