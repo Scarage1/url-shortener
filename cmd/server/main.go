@@ -22,19 +22,66 @@ func main() {
 	logger.InitLogger()
 	defer logger.Log.Sync()
 
-	cfg := config.LoadConfig()
+	cfg, err := config.LoadConfig()
 
-	db := database.Connect(cfg)
+	if err != nil {
+		logger.Log.Fatal(
+			"invalid configuration",
+			zap.Error(err),
+		)
+	}
 
-	redisClient := cache.ConnectRedis(
+	db, err := database.Connect(cfg)
+
+	if err != nil {
+		logger.Log.Fatal(
+			"failed to connect to database",
+			zap.Error(err),
+		)
+	}
+
+	logger.Log.Info("connected to postgres and ran migrations")
+
+	redisClient, err := cache.ConnectRedis(
 		cfg.RedisURL,
 	)
 
-	r := router.SetupRouter(
+	if err != nil {
+		logger.Log.Fatal(
+			"failed to connect to redis",
+			zap.Error(err),
+		)
+	}
+
+	logger.Log.Info("connected to redis")
+
+	r, urlService := router.SetupRouter(
 		db,
 		redisClient,
 		cfg,
 	)
+
+	flushCtx, cancelFlush := context.WithCancel(context.Background())
+	flushTicker := time.NewTicker(30 * time.Second)
+	flushDone := make(chan struct{})
+
+	go func() {
+		defer close(flushDone)
+
+		for {
+			select {
+			case <-flushTicker.C:
+				if err := urlService.FlushClickCounts(flushCtx); err != nil {
+					logger.Log.Error(
+						"click count flush failed",
+						zap.Error(err),
+					)
+				}
+			case <-flushCtx.Done():
+				return
+			}
+		}
+	}()
 
 	server := &http.Server{
 		Addr:    ":" + cfg.Port,
@@ -92,6 +139,17 @@ func main() {
 
 		logger.Log.Fatal(
 			"forced shutdown",
+			zap.Error(err),
+		)
+	}
+
+	flushTicker.Stop()
+	cancelFlush()
+	<-flushDone
+
+	if err := urlService.FlushClickCounts(context.Background()); err != nil {
+		logger.Log.Error(
+			"final click count flush failed",
 			zap.Error(err),
 		)
 	}

@@ -9,7 +9,7 @@ import (
 
 var Ctx = context.Background()
 
-func ConnectRedis(addr string) *redis.Client {
+func ConnectRedis(addr string) (*redis.Client, error) {
 
 	client := redis.NewClient(
 		&redis.Options{
@@ -17,13 +17,9 @@ func ConnectRedis(addr string) *redis.Client {
 		},
 	)
 
-	err := client.Ping(Ctx).Err()
-
-	if err != nil {
-		panic(err)
+	if err := client.Ping(Ctx).Err(); err != nil {
+		return nil, fmt.Errorf("connect to redis: %w", err)
 	}
 
-	fmt.Println("Connected to Redis")
-
-	return client
+	return client, nil
 }

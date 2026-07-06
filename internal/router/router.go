@@ -15,7 +15,7 @@ func SetupRouter(
 	db *gorm.DB,
 	redisClient *redis.Client,
 	cfg config.Config,
-) *gin.Engine {
+) (*gin.Engine, *service.URLService) {
 
 	r := gin.New()
 
@@ -114,5 +114,5 @@ func SetupRouter(
 
 	r.GET("/:code", urlHandler.RedirectURL)
 
-	return r
+	return r, urlService
 }

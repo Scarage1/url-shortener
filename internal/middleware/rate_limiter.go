@@ -9,6 +9,19 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+var rateLimitScript = redis.NewScript(`
+local count = redis.call("INCR", KEYS[1])
+if count == 1 then
+	redis.call("EXPIRE", KEYS[1], ARGV[1])
+end
+return count
+`)
+
+const (
+	rateLimitWindow = time.Minute
+	rateLimitMax    = 10
+)
+
 func RateLimiter(
 	redisClient *redis.Client,
 ) gin.HandlerFunc {
@@ -21,11 +34,12 @@ func RateLimiter(
 
 		key := "rate_limit:" + ip
 
-		count, err :=
-			redisClient.Incr(
-				ctx,
-				key,
-			).Result()
+		count, err := rateLimitScript.Run(
+			ctx,
+			redisClient,
+			[]string{key},
+			int(rateLimitWindow.Seconds()),
+		).Int()
 
 		if err != nil {
 
@@ -33,16 +47,7 @@ func RateLimiter(
 			return
 		}
 
-		if count == 1 {
-
-			redisClient.Expire(
-				ctx,
-				key,
-				time.Minute,
-			)
-		}
-
-		if count > 10 {
+		if count > rateLimitMax {
 
 			c.JSON(
 				http.StatusTooManyRequests,
