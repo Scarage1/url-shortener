@@ -2,11 +2,16 @@ package routing
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/Scarage1/url-shortener/internal/model"
+	"github.com/Scarage1/url-shortener/internal/utils"
 )
+
+var ErrPasswordRequired = errors.New("password required")
+var ErrInvalidPassword = errors.New("invalid password")
 
 type Context struct {
 	Now      time.Time
@@ -24,7 +29,7 @@ func NewEngine() *Engine {
 func (e *Engine) Resolve(url *model.URL, ctx Context) (string, error) {
 
 	for _, rule := range url.Rules {
-		if err := validateRule(rule); err != nil {
+		if err := e.applyRule(rule, ctx); err != nil {
 			return "", err
 		}
 	}
@@ -45,12 +50,31 @@ type GeoRule struct {
 	Destinations map[string]string `json:"destinations"`
 }
 
-func validateRule(rule model.RoutingRule) error {
+func (e *Engine) applyRule(
+	rule model.RoutingRule,
+	ctx Context,
+) error {
 
 	switch rule.Type {
 	case model.RoutingRuleTypePassword:
 		var cfg PasswordRule
-		return decodeRule(rule.Config, &cfg)
+		if err := decodeRule(rule.Config, &cfg); err != nil {
+			return err
+		}
+
+		if cfg.Hash == "" {
+			return fmt.Errorf("password rule requires a hash")
+		}
+
+		if ctx.Password == "" {
+			return ErrPasswordRequired
+		}
+
+		if !utils.CheckPassword(ctx.Password, cfg.Hash) {
+			return ErrInvalidPassword
+		}
+
+		return nil
 	case model.RoutingRuleTypeSchedule:
 		var cfg ScheduleRule
 		return decodeRule(rule.Config, &cfg)

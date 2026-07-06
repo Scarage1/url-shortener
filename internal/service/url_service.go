@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log"
 	"strings"
@@ -16,6 +17,14 @@ import (
 )
 
 var ErrUnsafeURL = errors.New("unsafe URL")
+var ErrInvalidRule = errors.New("invalid rule")
+var ErrPasswordRequired = errors.New("password required")
+var ErrInvalidPassword = errors.New("invalid password")
+
+type CreateRuleInput struct {
+	Type     string
+	Password string
+}
 
 // urlRepository is the minimal interface the service needs from the data layer.
 // *repository.URLRepository satisfies it automatically — no changes needed in callers.
@@ -54,6 +63,7 @@ func NewURLService(
 
 func (s *URLService) GetOriginalURL(
 	shortCode string,
+	password string,
 ) (*model.URL, error) {
 
 	ctx := context.Background()
@@ -133,10 +143,17 @@ func (s *URLService) GetOriginalURL(
 		resolvedURL, err := s.Resolver.Resolve(
 			url,
 			routing.Context{
-				Now: time.Now(),
+				Now:      time.Now(),
+				Password: password,
 			},
 		)
 		if err != nil {
+			switch {
+			case errors.Is(err, routing.ErrPasswordRequired):
+				return nil, ErrPasswordRequired
+			case errors.Is(err, routing.ErrInvalidPassword):
+				return nil, ErrInvalidPassword
+			}
 			return nil, err
 		}
 		destination = resolvedURL
@@ -201,6 +218,7 @@ func (s *URLService) FlushClickCounts(ctx context.Context) error {
 func (s *URLService) CreateShortURL(
 	originalURL string,
 	userID uint,
+	rules []CreateRuleInput,
 ) (*model.URL, error) {
 
 	if s.Scanner != nil {
@@ -210,20 +228,22 @@ func (s *URLService) CreateShortURL(
 		}
 	}
 
-	existingURL, err :=
-		s.Repo.FindByOriginalURL(
-			originalURL,
-			userID,
-		)
+	if len(rules) == 0 {
+		existingURL, err :=
+			s.Repo.FindByOriginalURL(
+				originalURL,
+				userID,
+			)
 
-	if err == nil {
+		if err == nil {
 
-		return existingURL, nil
-	}
+			return existingURL, nil
+		}
 
-	if err != gorm.ErrRecordNotFound {
+		if err != gorm.ErrRecordNotFound {
 
-		return nil, err
+			return nil, err
+		}
 	}
 
 	var shortCode string
@@ -262,6 +282,13 @@ func (s *URLService) CreateShortURL(
 		UserID: userID,
 	}
 
+	urlRules, err := s.buildRoutingRules(rules)
+	if err != nil {
+		return nil, err
+	}
+
+	url.Rules = urlRules
+
 	err = s.Repo.Create(url)
 
 	if err != nil {
@@ -270,6 +297,52 @@ func (s *URLService) CreateShortURL(
 	}
 
 	return url, nil
+}
+
+func (s *URLService) buildRoutingRules(
+	rules []CreateRuleInput,
+) ([]model.RoutingRule, error) {
+
+	if len(rules) == 0 {
+		return nil, nil
+	}
+
+	result := make([]model.RoutingRule, 0, len(rules))
+
+	for _, rule := range rules {
+		switch rule.Type {
+		case model.RoutingRuleTypePassword:
+			if rule.Password == "" {
+				return nil, ErrInvalidRule
+			}
+
+			hash, err := utils.HashPassword(rule.Password)
+			if err != nil {
+				return nil, err
+			}
+
+			config, err := json.Marshal(
+				routing.PasswordRule{
+					Hash: hash,
+				},
+			)
+			if err != nil {
+				return nil, err
+			}
+
+			result = append(
+				result,
+				model.RoutingRule{
+					Type:   model.RoutingRuleTypePassword,
+					Config: config,
+				},
+			)
+		default:
+			return nil, ErrInvalidRule
+		}
+	}
+
+	return result, nil
 }
 
 // GetStats returns URL analytics with live click count merged from Redis.

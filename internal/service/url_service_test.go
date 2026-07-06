@@ -9,6 +9,7 @@ import (
 	"github.com/Scarage1/url-shortener/internal/model"
 	"github.com/Scarage1/url-shortener/internal/routing"
 	"github.com/Scarage1/url-shortener/internal/security"
+	"github.com/Scarage1/url-shortener/internal/utils"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
@@ -231,7 +232,7 @@ func TestCreateShortURL_ReturnsSameCodeForDuplicateURL(t *testing.T) {
 	svc, mr := newTestService(t, []*model.URL{existing}, security.AllowAllScanner{})
 	defer mr.Close()
 
-	result, err := svc.CreateShortURL(original, ownerID)
+	result, err := svc.CreateShortURL(original, ownerID, nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, "exist1", result.ShortCode, "duplicate URL should return existing short code")
@@ -266,7 +267,7 @@ func TestCreateShortURL_SafeURLIsCreated(t *testing.T) {
 	svc, mr := newTestService(t, nil, security.AllowAllScanner{})
 	defer mr.Close()
 
-	result, err := svc.CreateShortURL("https://example.com", 1)
+	result, err := svc.CreateShortURL("https://example.com", 1, nil)
 
 	require.NoError(t, err)
 	assert.Equal(t, "https://example.com", result.OriginalURL)
@@ -281,15 +282,19 @@ func TestCreateShortURL_UnsafeURLIsBlocked(t *testing.T) {
 	)
 	defer mr.Close()
 
-	_, err := svc.CreateShortURL("https://malware.example", 1)
+	_, err := svc.CreateShortURL("https://malware.example", 1, nil)
 
 	assert.ErrorIs(t, err, ErrUnsafeURL)
 }
 
 func TestGetOriginalURL_LoadsRoutingRules(t *testing.T) {
+	// Generate a real bcrypt hash so the engine can verify the password.
+	hash, err := utils.HashPassword("secret")
+	require.NoError(t, err)
+
 	passwordConfig, err := json.Marshal(
 		map[string]string{
-			"hash": "bcrypt-hash",
+			"hash": hash,
 		},
 	)
 	require.NoError(t, err)
@@ -310,7 +315,8 @@ func TestGetOriginalURL_LoadsRoutingRules(t *testing.T) {
 	svc, mr := newTestService(t, []*model.URL{url}, security.AllowAllScanner{})
 	defer mr.Close()
 
-	result, err := svc.GetOriginalURL("rule01")
+	// Correct password → redirect should succeed
+	result, err := svc.GetOriginalURL("rule01", "secret")
 
 	require.NoError(t, err)
 	assert.Equal(t, "https://example.com", result.OriginalURL)
@@ -342,13 +348,99 @@ func TestGetOriginalURL_CacheHitStillLoadsRoutingRules(t *testing.T) {
 	svc, mr := newTestService(t, []*model.URL{url}, security.AllowAllScanner{})
 	defer mr.Close()
 
-	_, err = svc.GetOriginalURL("rule02")
+	_, err = svc.GetOriginalURL("rule02", "")
 	require.NoError(t, err)
 
-	result, err := svc.GetOriginalURL("rule02")
+	result, err := svc.GetOriginalURL("rule02", "")
 
 	require.NoError(t, err)
 	assert.Equal(t, "https://example.com", result.OriginalURL)
 	assert.Len(t, result.Rules, 1)
 	assert.Equal(t, model.RoutingRuleTypeGeo, result.Rules[0].Type)
+}
+
+func TestCreateShortURL_PasswordRuleHashesPassword(t *testing.T) {
+	svc, mr := newTestService(t, nil, security.AllowAllScanner{})
+	defer mr.Close()
+
+	result, err := svc.CreateShortURL(
+		"https://example.com/private",
+		1,
+		[]CreateRuleInput{
+			{
+				Type:     model.RoutingRuleTypePassword,
+				Password: "secret",
+			},
+		},
+	)
+
+	require.NoError(t, err)
+	require.Len(t, result.Rules, 1)
+	assert.Equal(t, model.RoutingRuleTypePassword, result.Rules[0].Type)
+	assert.NotContains(t, string(result.Rules[0].Config), "secret")
+}
+
+func TestGetOriginalURL_PasswordRuleBlocksWithoutPassword(t *testing.T) {
+	hash, err := utils.HashPassword("secret")
+	require.NoError(t, err)
+
+	config, err := json.Marshal(
+		routing.PasswordRule{
+			Hash: hash,
+		},
+	)
+	require.NoError(t, err)
+
+	url := &model.URL{
+		Model:       gorm.Model{ID: 1},
+		ShortCode:   "lock01",
+		OriginalURL: "https://example.com/private",
+		UserID:      1,
+		Rules: []model.RoutingRule{
+			{
+				Type:   model.RoutingRuleTypePassword,
+				Config: config,
+			},
+		},
+	}
+
+	svc, mr := newTestService(t, []*model.URL{url}, security.AllowAllScanner{})
+	defer mr.Close()
+
+	_, err = svc.GetOriginalURL("lock01", "")
+
+	assert.ErrorIs(t, err, ErrPasswordRequired)
+}
+
+func TestGetOriginalURL_PasswordRuleAllowsMatchingPassword(t *testing.T) {
+	hash, err := utils.HashPassword("secret")
+	require.NoError(t, err)
+
+	config, err := json.Marshal(
+		routing.PasswordRule{
+			Hash: hash,
+		},
+	)
+	require.NoError(t, err)
+
+	url := &model.URL{
+		Model:       gorm.Model{ID: 1},
+		ShortCode:   "lock02",
+		OriginalURL: "https://example.com/private",
+		UserID:      1,
+		Rules: []model.RoutingRule{
+			{
+				Type:   model.RoutingRuleTypePassword,
+				Config: config,
+			},
+		},
+	}
+
+	svc, mr := newTestService(t, []*model.URL{url}, security.AllowAllScanner{})
+	defer mr.Close()
+
+	result, err := svc.GetOriginalURL("lock02", "secret")
+
+	require.NoError(t, err)
+	assert.Equal(t, "https://example.com/private", result.OriginalURL)
 }

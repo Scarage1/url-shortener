@@ -15,7 +15,13 @@ type URLHandler struct {
 }
 
 type ShortenRequest struct {
-	URL string `json:"url" binding:"required,url"`
+	URL   string               `json:"url" binding:"required,url"`
+	Rules []ShortenRuleRequest `json:"rules"`
+}
+
+type ShortenRuleRequest struct {
+	Type     string `json:"type"`
+	Password string `json:"password"`
 }
 
 type ShortenResponse struct {
@@ -33,10 +39,34 @@ func NewURLHandler(service *service.URLService, baseURL string) *URLHandler {
 func (h *URLHandler) RedirectURL(c *gin.Context) {
 
 	shortCode := c.Param("code")
+	password := c.GetHeader("X-Link-Password")
 
-	url, err := h.Service.GetOriginalURL(shortCode)
+	if password == "" {
+		password = c.Query("password")
+	}
+
+	url, err := h.Service.GetOriginalURL(shortCode, password)
 
 	if err != nil {
+
+		switch {
+		case errors.Is(err, service.ErrPasswordRequired):
+			c.JSON(
+				http.StatusUnauthorized,
+				gin.H{
+					"error": "password required",
+				},
+			)
+			return
+		case errors.Is(err, service.ErrInvalidPassword):
+			c.JSON(
+				http.StatusUnauthorized,
+				gin.H{
+					"error": "invalid password",
+				},
+			)
+			return
+		}
 
 		c.JSON(
 			http.StatusNotFound,
@@ -88,6 +118,7 @@ func (h *URLHandler) ShortenURL(c *gin.Context) {
 		h.Service.CreateShortURL(
 			req.URL,
 			userID,
+			toCreateRuleInputs(req.Rules),
 		)
 
 	if err != nil {
@@ -98,6 +129,18 @@ func (h *URLHandler) ShortenURL(c *gin.Context) {
 				http.StatusBadRequest,
 				gin.H{
 					"error": "unsafe URL",
+				},
+			)
+
+			return
+		}
+
+		if errors.Is(err, service.ErrInvalidRule) {
+
+			c.JSON(
+				http.StatusBadRequest,
+				gin.H{
+					"error": "invalid rules",
 				},
 			)
 
@@ -127,6 +170,29 @@ func (h *URLHandler) ShortenURL(c *gin.Context) {
 		http.StatusOK,
 		response,
 	)
+}
+
+func toCreateRuleInputs(
+	rules []ShortenRuleRequest,
+) []service.CreateRuleInput {
+
+	if len(rules) == 0 {
+		return nil
+	}
+
+	inputs := make([]service.CreateRuleInput, 0, len(rules))
+
+	for _, rule := range rules {
+		inputs = append(
+			inputs,
+			service.CreateRuleInput{
+				Type:     rule.Type,
+				Password: rule.Password,
+			},
+		)
+	}
+
+	return inputs
 }
 
 func (h *URLHandler) GetStats(
