@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Scarage1/url-shortener/internal/geo"
 	"github.com/Scarage1/url-shortener/internal/model"
 	"github.com/Scarage1/url-shortener/internal/routing"
 	"github.com/Scarage1/url-shortener/internal/security"
@@ -128,6 +129,7 @@ func newTestService(
 		client,
 		scanner,
 		routing.NewEngine(),
+		geo.NoopLocator{},
 	)
 
 	return svc, mr
@@ -316,7 +318,7 @@ func TestGetOriginalURL_LoadsRoutingRules(t *testing.T) {
 	defer mr.Close()
 
 	// Correct password → redirect should succeed
-	result, err := svc.GetOriginalURL("rule01", "secret")
+	result, err := svc.GetOriginalURL("rule01", "secret", "")
 
 	require.NoError(t, err)
 	assert.Equal(t, "https://example.com", result.OriginalURL)
@@ -348,10 +350,10 @@ func TestGetOriginalURL_CacheHitStillLoadsRoutingRules(t *testing.T) {
 	svc, mr := newTestService(t, []*model.URL{url}, security.AllowAllScanner{})
 	defer mr.Close()
 
-	_, err = svc.GetOriginalURL("rule02", "")
+	_, err = svc.GetOriginalURL("rule02", "", "")
 	require.NoError(t, err)
 
-	result, err := svc.GetOriginalURL("rule02", "")
+	result, err := svc.GetOriginalURL("rule02", "", "")
 
 	require.NoError(t, err)
 	assert.Equal(t, "https://example.com", result.OriginalURL)
@@ -407,7 +409,7 @@ func TestGetOriginalURL_PasswordRuleBlocksWithoutPassword(t *testing.T) {
 	svc, mr := newTestService(t, []*model.URL{url}, security.AllowAllScanner{})
 	defer mr.Close()
 
-	_, err = svc.GetOriginalURL("lock01", "")
+	_, err = svc.GetOriginalURL("lock01", "", "")
 
 	assert.ErrorIs(t, err, ErrPasswordRequired)
 }
@@ -439,7 +441,7 @@ func TestGetOriginalURL_PasswordRuleAllowsMatchingPassword(t *testing.T) {
 	svc, mr := newTestService(t, []*model.URL{url}, security.AllowAllScanner{})
 	defer mr.Close()
 
-	result, err := svc.GetOriginalURL("lock02", "secret")
+	result, err := svc.GetOriginalURL("lock02", "secret", "")
 
 	require.NoError(t, err)
 	assert.Equal(t, "https://example.com/private", result.OriginalURL)

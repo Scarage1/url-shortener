@@ -2,6 +2,7 @@ package router
 
 import (
 	"github.com/Scarage1/url-shortener/internal/config"
+	"github.com/Scarage1/url-shortener/internal/geo"
 	"github.com/Scarage1/url-shortener/internal/handler"
 	"github.com/Scarage1/url-shortener/internal/middleware"
 	"github.com/Scarage1/url-shortener/internal/repository"
@@ -62,6 +63,7 @@ func SetupRouter(
 		redisClient,
 		urlScanner,
 		urlResolver,
+		geo.NewIPAPILocator(),
 	)
 
 	urlHandler := handler.NewURLHandler(
@@ -119,6 +121,16 @@ func SetupRouter(
 	protected.DELETE(
 		"/links/:code",
 		urlHandler.DeleteURL,
+	)
+
+	protected.GET(
+		"/export",
+		urlHandler.ExportLinks,
+	)
+
+	protected.POST(
+		"/import",
+		urlHandler.ImportLinks,
 	)
 
 	r.GET("/:code", urlHandler.RedirectURL)

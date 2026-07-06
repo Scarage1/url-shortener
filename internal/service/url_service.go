@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Scarage1/url-shortener/internal/geo"
 	"github.com/Scarage1/url-shortener/internal/model"
 	"github.com/Scarage1/url-shortener/internal/routing"
 	"github.com/Scarage1/url-shortener/internal/security"
@@ -20,10 +21,15 @@ var ErrUnsafeURL = errors.New("unsafe URL")
 var ErrInvalidRule = errors.New("invalid rule")
 var ErrPasswordRequired = errors.New("password required")
 var ErrInvalidPassword = errors.New("invalid password")
+var ErrNotYetActive = errors.New("link not yet active")
+var ErrExpired = errors.New("link has expired")
 
 type CreateRuleInput struct {
-	Type     string
-	Password string
+	Type       string
+	Password   string
+	ActiveFrom *time.Time
+	ExpiresAt  *time.Time
+	GeoRoutes  map[string]string
 }
 
 // urlRepository is the minimal interface the service needs from the data layer.
@@ -44,6 +50,7 @@ type URLService struct {
 	Redis    *redis.Client
 	Scanner  security.URLScanner
 	Resolver *routing.Engine
+	Geo      geo.Locator
 }
 
 func NewURLService(
@@ -51,6 +58,7 @@ func NewURLService(
 	redis *redis.Client,
 	scanner security.URLScanner,
 	resolver *routing.Engine,
+	geoLocator geo.Locator,
 ) *URLService {
 
 	return &URLService{
@@ -58,12 +66,14 @@ func NewURLService(
 		Redis:    redis,
 		Scanner:  scanner,
 		Resolver: resolver,
+		Geo:      geoLocator,
 	}
 }
 
 func (s *URLService) GetOriginalURL(
 	shortCode string,
 	password string,
+	clientIP string,
 ) (*model.URL, error) {
 
 	ctx := context.Background()
@@ -137,6 +147,12 @@ func (s *URLService) GetOriginalURL(
 		}
 	}
 
+	// Resolve country for geo routing (degrades gracefully to "" on any error)
+	country := ""
+	if s.Geo != nil {
+		country = s.Geo.CountryCode(clientIP)
+	}
+
 	destination := url.OriginalURL
 
 	if s.Resolver != nil {
@@ -145,6 +161,7 @@ func (s *URLService) GetOriginalURL(
 			routing.Context{
 				Now:      time.Now(),
 				Password: password,
+				Country:  country,
 			},
 		)
 		if err != nil {
@@ -153,6 +170,10 @@ func (s *URLService) GetOriginalURL(
 				return nil, ErrPasswordRequired
 			case errors.Is(err, routing.ErrInvalidPassword):
 				return nil, ErrInvalidPassword
+			case errors.Is(err, routing.ErrNotYetActive):
+				return nil, ErrNotYetActive
+			case errors.Is(err, routing.ErrExpired):
+				return nil, ErrExpired
 			}
 			return nil, err
 		}
@@ -337,6 +358,30 @@ func (s *URLService) buildRoutingRules(
 					Config: config,
 				},
 			)
+		case model.RoutingRuleTypeSchedule:
+			config, err := json.Marshal(routing.ScheduleRule{
+				ActiveFrom: rule.ActiveFrom,
+				ExpiresAt:  rule.ExpiresAt,
+			})
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, model.RoutingRule{
+				Type:   model.RoutingRuleTypeSchedule,
+				Config: config,
+			})
+		case model.RoutingRuleTypeGeo:
+			if len(rule.GeoRoutes) == 0 {
+				return nil, ErrInvalidRule
+			}
+			config, err := json.Marshal(rule.GeoRoutes)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, model.RoutingRule{
+				Type:   model.RoutingRuleTypeGeo,
+				Config: config,
+			})
 		default:
 			return nil, ErrInvalidRule
 		}
