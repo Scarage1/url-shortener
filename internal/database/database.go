@@ -33,6 +33,7 @@ func Connect(cfg config.Config) (*gorm.DB, error) {
 	err = db.AutoMigrate(
 		&model.User{},
 		&model.URL{},
+		&model.RoutingRule{},
 	)
 
 	if err != nil {

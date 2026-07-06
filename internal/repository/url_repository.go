@@ -50,7 +50,7 @@ func (r *URLRepository) FindByShortCode(code string) (*model.URL, error) {
 	err := r.DB.Where(
 		"short_code = ?",
 		code,
-	).First(&url).Error
+	).Preload("Rules").First(&url).Error
 
 	if err != nil {
 		return nil, err
@@ -71,6 +71,8 @@ func (r *URLRepository) FindByCodeAndUser(
 			"short_code = ? AND user_id = ?",
 			code,
 			userID,
+		).Preload(
+			"Rules",
 		).First(
 			&url,
 		).Error

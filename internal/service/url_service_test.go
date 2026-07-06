@@ -1,11 +1,13 @@
 package service
 
 import (
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
 
 	"github.com/Scarage1/url-shortener/internal/model"
+	"github.com/Scarage1/url-shortener/internal/routing"
 	"github.com/Scarage1/url-shortener/internal/security"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
@@ -124,6 +126,7 @@ func newTestService(
 		&mockURLRepo{urls: urls},
 		client,
 		scanner,
+		routing.NewEngine(),
 	)
 
 	return svc, mr
@@ -281,4 +284,71 @@ func TestCreateShortURL_UnsafeURLIsBlocked(t *testing.T) {
 	_, err := svc.CreateShortURL("https://malware.example", 1)
 
 	assert.ErrorIs(t, err, ErrUnsafeURL)
+}
+
+func TestGetOriginalURL_LoadsRoutingRules(t *testing.T) {
+	passwordConfig, err := json.Marshal(
+		map[string]string{
+			"hash": "bcrypt-hash",
+		},
+	)
+	require.NoError(t, err)
+
+	url := &model.URL{
+		Model:       gorm.Model{ID: 1},
+		ShortCode:   "rule01",
+		OriginalURL: "https://example.com",
+		UserID:      1,
+		Rules: []model.RoutingRule{
+			{
+				Type:   model.RoutingRuleTypePassword,
+				Config: passwordConfig,
+			},
+		},
+	}
+
+	svc, mr := newTestService(t, []*model.URL{url}, security.AllowAllScanner{})
+	defer mr.Close()
+
+	result, err := svc.GetOriginalURL("rule01")
+
+	require.NoError(t, err)
+	assert.Equal(t, "https://example.com", result.OriginalURL)
+	assert.Len(t, result.Rules, 1)
+	assert.Equal(t, model.RoutingRuleTypePassword, result.Rules[0].Type)
+}
+
+func TestGetOriginalURL_CacheHitStillLoadsRoutingRules(t *testing.T) {
+	geoConfig, err := json.Marshal(
+		map[string]string{
+			"US": "https://us.example.com",
+		},
+	)
+	require.NoError(t, err)
+
+	url := &model.URL{
+		Model:       gorm.Model{ID: 1},
+		ShortCode:   "rule02",
+		OriginalURL: "https://example.com",
+		UserID:      1,
+		Rules: []model.RoutingRule{
+			{
+				Type:   model.RoutingRuleTypeGeo,
+				Config: geoConfig,
+			},
+		},
+	}
+
+	svc, mr := newTestService(t, []*model.URL{url}, security.AllowAllScanner{})
+	defer mr.Close()
+
+	_, err = svc.GetOriginalURL("rule02")
+	require.NoError(t, err)
+
+	result, err := svc.GetOriginalURL("rule02")
+
+	require.NoError(t, err)
+	assert.Equal(t, "https://example.com", result.OriginalURL)
+	assert.Len(t, result.Rules, 1)
+	assert.Equal(t, model.RoutingRuleTypeGeo, result.Rules[0].Type)
 }

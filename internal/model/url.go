@@ -14,4 +14,5 @@ type URL struct {
 
 	ClickCount   int
 	LastAccessed *time.Time
+	Rules        []RoutingRule `gorm:"constraint:OnDelete:CASCADE;"`
 }

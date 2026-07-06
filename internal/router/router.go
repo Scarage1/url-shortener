@@ -5,6 +5,7 @@ import (
 	"github.com/Scarage1/url-shortener/internal/handler"
 	"github.com/Scarage1/url-shortener/internal/middleware"
 	"github.com/Scarage1/url-shortener/internal/repository"
+	"github.com/Scarage1/url-shortener/internal/routing"
 	"github.com/Scarage1/url-shortener/internal/security"
 	"github.com/Scarage1/url-shortener/internal/service"
 	"github.com/gin-gonic/gin"
@@ -54,11 +55,13 @@ func SetupRouter(
 		security.NewRulesScanner(cfg.BlockedDomains),
 		security.NewGoogleSafeBrowsingScanner(cfg.GoogleSafeBrowsingAPIKey),
 	)
+	urlResolver := routing.NewEngine()
 
 	urlService := service.NewURLService(
 		urlRepo,
 		redisClient,
 		urlScanner,
+		urlResolver,
 	)
 
 	urlHandler := handler.NewURLHandler(

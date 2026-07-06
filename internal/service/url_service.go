@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Scarage1/url-shortener/internal/model"
+	"github.com/Scarage1/url-shortener/internal/routing"
 	"github.com/Scarage1/url-shortener/internal/security"
 	"github.com/Scarage1/url-shortener/internal/utils"
 	"github.com/redis/go-redis/v9"
@@ -30,21 +31,24 @@ type urlRepository interface {
 }
 
 type URLService struct {
-	Repo    urlRepository
-	Redis   *redis.Client
-	Scanner security.URLScanner
+	Repo     urlRepository
+	Redis    *redis.Client
+	Scanner  security.URLScanner
+	Resolver *routing.Engine
 }
 
 func NewURLService(
 	repo urlRepository,
 	redis *redis.Client,
 	scanner security.URLScanner,
+	resolver *routing.Engine,
 ) *URLService {
 
 	return &URLService{
-		Repo:    repo,
-		Redis:   redis,
-		Scanner: scanner,
+		Repo:     repo,
+		Redis:    redis,
+		Scanner:  scanner,
+		Resolver: resolver,
 	}
 }
 
@@ -56,6 +60,7 @@ func (s *URLService) GetOriginalURL(
 
 	cacheKey := "url:" + shortCode
 	clickKey := "clicks:" + shortCode
+	clickRecorded := false
 
 	// 1. Check Redis cache
 	cachedURL, err := s.Redis.Get(
@@ -75,11 +80,14 @@ func (s *URLService) GetOriginalURL(
 				err,
 			)
 		}
+		clickRecorded = true
 
-		return &model.URL{
-			ShortCode:   shortCode,
-			OriginalURL: cachedURL,
-		}, nil
+		if s.Resolver == nil {
+			return &model.URL{
+				ShortCode:   shortCode,
+				OriginalURL: cachedURL,
+			}, nil
+		}
 	}
 
 	// 2. Cache miss → PostgreSQL
@@ -106,18 +114,39 @@ func (s *URLService) GetOriginalURL(
 	}
 
 	// 4. Increment Redis counter
-	if err := s.Redis.Incr(
-		ctx,
-		clickKey,
-	).Err(); err != nil {
+	if !clickRecorded {
+		if err := s.Redis.Incr(
+			ctx,
+			clickKey,
+		).Err(); err != nil {
 
-		log.Println(
-			"Redis counter error:",
-			err,
-		)
+			log.Println(
+				"Redis counter error:",
+				err,
+			)
+		}
 	}
 
-	return url, nil
+	destination := url.OriginalURL
+
+	if s.Resolver != nil {
+		resolvedURL, err := s.Resolver.Resolve(
+			url,
+			routing.Context{
+				Now: time.Now(),
+			},
+		)
+		if err != nil {
+			return nil, err
+		}
+		destination = resolvedURL
+	}
+
+	return &model.URL{
+		ShortCode:   url.ShortCode,
+		OriginalURL: destination,
+		Rules:       url.Rules,
+	}, nil
 }
 
 func (s *URLService) FlushClickCounts(ctx context.Context) error {
