@@ -13,11 +13,11 @@ import (
 // DashboardStats is the response for GET /api/v1/dashboard.
 // One call replaces 5 separate frontend API calls.
 type DashboardStats struct {
-	TotalLinks      int        `json:"total_links"`
-	MonthlyClicks   int        `json:"monthly_clicks"`
-	RemainingClicks int        `json:"remaining_clicks"`
-	PlanName        string     `json:"plan"`
-	TopLinks        []TopLink  `json:"top_links"`
+	TotalLinks      int       `json:"total_links"`
+	MonthlyClicks   int       `json:"monthly_clicks"`
+	RemainingClicks int       `json:"remaining_clicks"`
+	PlanName        string    `json:"plan"`
+	TopLinks        []TopLink `json:"top_links"`
 }
 
 type TopLink struct {

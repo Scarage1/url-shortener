@@ -18,10 +18,10 @@ import (
 
 // UserProfile is the response for GET /me.
 type UserProfile struct {
-	Email    string `json:"email"`
-	Verified bool   `json:"verified"`
+	Email    string  `json:"email"`
+	Verified bool    `json:"verified"`
 	Org      OrgInfo `json:"organization"`
-	Plan     string `json:"plan"`
+	Plan     string  `json:"plan"`
 }
 
 type OrgInfo struct {
