@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/Scarage1/url-shortener/internal/email"
 	"github.com/Scarage1/url-shortener/internal/model"
@@ -161,8 +162,13 @@ func TestAuthService_EmailVerification(t *testing.T) {
 	// We need to extract the verification token from redis.
 	// Keys are: verify_token:<token> -> userID
 	ctx := context.Background()
-	keys, err := rClient.Keys(ctx, "verify_token:*").Result()
-	require.NoError(t, err)
+	var keys []string
+	assert.Eventually(t, func() bool {
+		var err error
+		keys, err = rClient.Keys(ctx, "verify_token:*").Result()
+		return err == nil && len(keys) == 1
+	}, 2*time.Second, 50*time.Millisecond)
+
 	require.Len(t, keys, 1)
 
 	// verify_token:<token>
