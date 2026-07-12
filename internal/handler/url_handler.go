@@ -14,8 +14,9 @@ import (
 )
 
 type URLHandler struct {
-	Service *service.URLService
-	BaseURL string
+	Service      *service.URLService
+	AuditService *service.AuditService
+	BaseURL      string
 }
 
 type ShortenRequest struct {
@@ -36,10 +37,11 @@ type ShortenResponse struct {
 	ShortURL  string `json:"short_url"`
 }
 
-func NewURLHandler(service *service.URLService, baseURL string) *URLHandler {
+func NewURLHandler(service *service.URLService, auditService *service.AuditService, baseURL string) *URLHandler {
 	return &URLHandler{
-		Service: service,
-		BaseURL: baseURL,
+		Service:      service,
+		AuditService: auditService,
+		BaseURL:      baseURL,
 	}
 }
 
@@ -114,6 +116,8 @@ func (h *URLHandler) ShortenURL(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	h.AuditService.Log(orgID, userID, "link.created", "url", url.ShortCode, c.ClientIP(), map[string]interface{}{"original_url": req.URL})
 
 	c.JSON(
 		http.StatusOK,
@@ -219,6 +223,9 @@ func (h *URLHandler) DeleteURL(c *gin.Context) {
 		return
 	}
 
+	userID, _ := utils.GetUserID(c)
+	h.AuditService.Log(orgID, userID, "link.deleted", "url", code, c.ClientIP(), nil)
+
 	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
 }
 
@@ -239,6 +246,9 @@ func (h *URLHandler) ExportLinks(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	userID, _ := utils.GetUserID(c)
+	h.AuditService.Log(orgID, userID, "links.exported", "url", "", c.ClientIP(), nil)
 
 	c.Header("Content-Type", "text/csv; charset=utf-8")
 	c.Header("Content-Disposition", `attachment; filename="links.csv"`)
@@ -319,6 +329,8 @@ func (h *URLHandler) ImportLinks(c *gin.Context) {
 
 		created++
 	}
+
+	h.AuditService.Log(orgID, userID, "links.imported", "url", "", c.ClientIP(), map[string]interface{}{"count": created})
 
 	c.JSON(
 		http.StatusOK,

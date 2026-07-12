@@ -4,9 +4,10 @@ import (
 	"fmt"
 
 	"github.com/Scarage1/url-shortener/internal/config"
-	"github.com/Scarage1/url-shortener/internal/model"
-
-	"gorm.io/driver/postgres"
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
+	gormPostgres "gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
@@ -22,7 +23,7 @@ func Connect(cfg config.Config) (*gorm.DB, error) {
 	)
 
 	db, err := gorm.Open(
-		postgres.Open(dsn),
+		gormPostgres.Open(dsn),
 		&gorm.Config{},
 	)
 
@@ -30,18 +31,26 @@ func Connect(cfg config.Config) (*gorm.DB, error) {
 		return nil, fmt.Errorf("connect to postgres: %w", err)
 	}
 
-	err = db.AutoMigrate(
-		&model.User{},
-		&model.URL{},
-		&model.RoutingRule{},
-		&model.Plan{},
-		&model.Organization{},
-		&model.OrganizationMember{},
-		&model.Subscription{},
-	)
-
+	// Run versioned migrations using golang-migrate
+	sqlDB, err := db.DB()
 	if err != nil {
-		return nil, fmt.Errorf("auto-migrate: %w", err)
+		return nil, fmt.Errorf("get sql db: %w", err)
+	}
+
+	driver, err := postgres.WithInstance(sqlDB, &postgres.Config{})
+	if err != nil {
+		return nil, fmt.Errorf("migration driver: %w", err)
+	}
+
+	m, err := migrate.NewWithDatabaseInstance(
+		"file://migrations",
+		"postgres", driver)
+	if err != nil {
+		return nil, fmt.Errorf("migrate instance: %w", err)
+	}
+
+	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		return nil, fmt.Errorf("run migrations: %w", err)
 	}
 
 	// Seed pricing tiers (idempotent)

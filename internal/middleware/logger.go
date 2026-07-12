@@ -23,6 +23,9 @@ func Logger() gin.HandlerFunc {
 				"request_id",
 			)
 
+		userIDValue, _ := c.Get("user_id")
+		orgIDValue, _ := c.Get("org_id")
+
 		logger.Log.Info(
 			"request completed",
 
@@ -49,6 +52,21 @@ func Logger() gin.HandlerFunc {
 			zap.Duration(
 				"latency",
 				time.Since(start),
+			),
+
+			zap.String(
+				"client_ip",
+				c.ClientIP(),
+			),
+
+			zap.Any(
+				"user_id",
+				userIDValue,
+			),
+
+			zap.Any(
+				"org_id",
+				orgIDValue,
 			),
 		)
 	}

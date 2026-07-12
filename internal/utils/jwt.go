@@ -1,11 +1,15 @@
 package utils
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// GenerateToken generates a short-lived access token valid for 15 minutes.
 func GenerateToken(
 	userID uint,
 	secret string,
@@ -13,12 +17,10 @@ func GenerateToken(
 
 	claims :=
 		jwt.MapClaims{
-
 			"user_id": userID,
-
 			"exp": time.Now().
 				Add(
-					time.Hour * 24,
+					time.Minute * 15,
 				).
 				Unix(),
 		}
@@ -56,7 +58,6 @@ func ValidateToken(
 		)
 
 	if err != nil {
-
 		return 0, err
 	}
 
@@ -68,7 +69,6 @@ func ValidateToken(
 			claims["user_id"].(float64)
 
 		if !ok {
-
 			return 0,
 				jwt.ErrTokenInvalidClaims
 		}
@@ -77,4 +77,21 @@ func ValidateToken(
 	}
 
 	return 0, jwt.ErrTokenInvalidClaims
+}
+
+// GenerateRefreshToken generates a secure, random 32-byte hex-encoded string.
+func GenerateRefreshToken() (string, error) {
+	b := make([]byte, 32)
+	_, err := rand.Read(b)
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
+// HashRefreshToken SHA-256 hashes a high-entropy refresh token.
+func HashRefreshToken(token string) string {
+	h := sha256.New()
+	h.Write([]byte(token))
+	return hex.EncodeToString(h.Sum(nil))
 }

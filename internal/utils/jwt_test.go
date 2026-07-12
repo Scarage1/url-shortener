@@ -73,3 +73,20 @@ func TestValidateToken_InvalidUserIDClaimIsRejected(t *testing.T) {
 
 	assert.ErrorIs(t, err, jwt.ErrTokenInvalidClaims)
 }
+
+func TestGenerateAndHashRefreshToken(t *testing.T) {
+	token, err := GenerateRefreshToken()
+	require.NoError(t, err)
+	assert.Len(t, token, 64) // 32 bytes hex encoded is 64 characters
+
+	hash1 := HashRefreshToken(token)
+	assert.NotEmpty(t, hash1)
+
+	hash2 := HashRefreshToken(token)
+	assert.Equal(t, hash1, hash2, "Hashing same token must yield same hash")
+
+	differentToken, err := GenerateRefreshToken()
+	require.NoError(t, err)
+	differentHash := HashRefreshToken(differentToken)
+	assert.NotEqual(t, hash1, differentHash, "Different tokens must yield different hashes")
+}

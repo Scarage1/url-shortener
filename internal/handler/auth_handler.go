@@ -10,15 +10,18 @@ import (
 )
 
 type AuthHandler struct {
-	Service *service.AuthService
+	Service      *service.AuthService
+	AuditService *service.AuditService
 }
 
 func NewAuthHandler(
 	service *service.AuthService,
+	auditService *service.AuditService,
 ) *AuthHandler {
 
 	return &AuthHandler{
-		Service: service,
+		Service:      service,
+		AuditService: auditService,
 	}
 }
 
@@ -58,14 +61,81 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	token, err := h.Service.Login(req.Email, req.Password)
+	accessToken, refreshToken, err := h.Service.Login(req.Email, req.Password)
 
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"token": token})
+	// Set secure, HttpOnly, SameSite cookies
+	c.SetCookie("access_token", accessToken, 900, "/", "", true, true)
+	c.SetCookie("refresh_token", refreshToken, 2592000, "/api/v1/auth", "", true, true)
+
+	c.JSON(http.StatusOK, gin.H{
+		"token":         accessToken,
+		"refresh_token": refreshToken,
+	})
+}
+
+// Refresh rotates the refresh token and issues a new access token.
+func (h *AuthHandler) Refresh(c *gin.Context) {
+	refreshToken, err := c.Cookie("refresh_token")
+	if err != nil {
+		// Fallback to body if cookie is missing (e.g., API clients)
+		var req struct {
+			RefreshToken string `json:"refresh_token"`
+		}
+		if err := c.ShouldBindJSON(&req); err == nil && req.RefreshToken != "" {
+			refreshToken = req.RefreshToken
+		} else {
+			refreshToken = c.GetHeader("X-Refresh-Token")
+		}
+	}
+
+	if refreshToken == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "refresh token required"})
+		return
+	}
+
+	accessToken, newRefreshToken, err := h.Service.RefreshSession(refreshToken)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.SetCookie("access_token", accessToken, 900, "/", "", true, true)
+	c.SetCookie("refresh_token", newRefreshToken, 2592000, "/api/v1/auth", "", true, true)
+
+	c.JSON(http.StatusOK, gin.H{
+		"token":         accessToken,
+		"refresh_token": newRefreshToken,
+	})
+}
+
+// Logout revokes the active refresh token and clears client cookies.
+func (h *AuthHandler) Logout(c *gin.Context) {
+	refreshToken, err := c.Cookie("refresh_token")
+	if err != nil {
+		var req struct {
+			RefreshToken string `json:"refresh_token"`
+		}
+		if err := c.ShouldBindJSON(&req); err == nil && req.RefreshToken != "" {
+			refreshToken = req.RefreshToken
+		} else {
+			refreshToken = c.GetHeader("X-Refresh-Token")
+		}
+	}
+
+	if refreshToken != "" {
+		_ = h.Service.Logout(refreshToken)
+	}
+
+	// Clear cookies by setting maxAge to -1
+	c.SetCookie("access_token", "", -1, "/", "", true, true)
+	c.SetCookie("refresh_token", "", -1, "/api/v1/auth", "", true, true)
+
+	c.JSON(http.StatusOK, gin.H{"message": "logged out successfully"})
 }
 
 // ---------------------------------------------------------------------------

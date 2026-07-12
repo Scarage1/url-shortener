@@ -19,30 +19,23 @@ func AuthMiddleware(jwtSecret string, orgService *service.OrgService, db *gorm.D
 
 	return func(c *gin.Context) {
 
-		header :=
-			c.GetHeader(
-				"Authorization",
-			)
-
-		if header == "" {
-
-			c.JSON(
-				http.StatusUnauthorized,
-				gin.H{
-					"error": "missing token",
-				},
-			)
-
-			c.Abort()
-
-			return
+		var tokenString string
+		if cookie, err := c.Cookie("access_token"); err == nil && cookie != "" {
+			tokenString = cookie
+		} else {
+			header := c.GetHeader("Authorization")
+			if header == "" {
+				c.JSON(
+					http.StatusUnauthorized,
+					gin.H{
+						"error": "missing token",
+					},
+				)
+				c.Abort()
+				return
+			}
+			tokenString = strings.TrimPrefix(header, "Bearer ")
 		}
-
-		tokenString :=
-			strings.TrimPrefix(
-				header,
-				"Bearer ",
-			)
 
 		userID, err :=
 			utils.ValidateToken(

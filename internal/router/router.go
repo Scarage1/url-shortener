@@ -11,6 +11,7 @@ import (
 	"github.com/Scarage1/url-shortener/internal/security"
 	"github.com/Scarage1/url-shortener/internal/service"
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
@@ -30,11 +31,15 @@ func SetupRouter(
 	r.Use(
 		middleware.RequestID(),
 		middleware.Logger(),
+		middleware.SecurityHeaders(),
+		middleware.Metrics(),
 	)
 
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
+
+	r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	// --- Services ---
 
@@ -45,6 +50,7 @@ func SetupRouter(
 	)
 
 	orgService := service.NewOrgService(db)
+	auditService := service.NewAuditService(db)
 	quotaService := service.NewQuotaService(db, redisClient)
 	dashboardService := service.NewDashboardService(db, redisClient)
 
@@ -53,6 +59,7 @@ func SetupRouter(
 	authService := service.NewAuthService(
 		userRepo,
 		orgService,
+		auditService,
 		cfg.JWTSecret,
 		db,
 		redisClient,
@@ -60,7 +67,7 @@ func SetupRouter(
 		cfg.BaseURL,
 	)
 
-	authHandler := handler.NewAuthHandler(authService)
+	authHandler := handler.NewAuthHandler(authService, auditService)
 	planHandler := handler.NewPlanHandler(quotaService)
 	dashboardHandler := handler.NewDashboardHandler(dashboardService)
 
@@ -79,7 +86,7 @@ func SetupRouter(
 		geo.NewIPAPILocator(),
 	)
 
-	urlHandler := handler.NewURLHandler(urlService, cfg.BaseURL)
+	urlHandler := handler.NewURLHandler(urlService, auditService, cfg.BaseURL)
 
 	// --- Routes ---
 
@@ -88,12 +95,15 @@ func SetupRouter(
 
 	// Auth routes (public)
 	auth := api.Group("/auth")
+	auth.Use(middleware.BodyLimit(1 << 20)) // 1MB limit for auth requests
 
 	auth.POST("/register",
 		middleware.SignupLimiter(redisClient),
 		authHandler.Register,
 	)
 	auth.POST("/login", authHandler.Login)
+	auth.POST("/refresh", authHandler.Refresh)
+	auth.POST("/logout", authHandler.Logout)
 
 	// Public auth (no JWT needed)
 	auth.GET("/verify", authHandler.VerifyEmail)
@@ -114,16 +124,16 @@ func SetupRouter(
 	protected.GET("/dashboard", dashboardHandler.GetDashboard)
 	protected.GET("/stats/:code", urlHandler.GetStats)
 	protected.GET("/links", urlHandler.GetUserLinks)
-	protected.POST("/auth/resend-verification", authHandler.ResendVerification)
+	protected.POST("/auth/resend-verification", middleware.BodyLimit(1<<20), authHandler.ResendVerification)
 
 	// Write operations (require verified email)
 	verified := protected.Group("")
 	verified.Use(middleware.EmailVerified())
 
-	verified.POST("/shorten", urlHandler.ShortenURL)
+	verified.POST("/shorten", middleware.BodyLimit(1<<20), urlHandler.ShortenURL)
 	verified.DELETE("/links/:code", urlHandler.DeleteURL)
 	verified.GET("/export", urlHandler.ExportLinks)
-	verified.POST("/import", urlHandler.ImportLinks)
+	verified.POST("/import", middleware.BodyLimit(5<<20), urlHandler.ImportLinks)
 
 	// Public redirect (generous rate limit)
 	r.Use(middleware.PublicRateLimiter(redisClient))

@@ -30,19 +30,21 @@ type OrgInfo struct {
 }
 
 type AuthService struct {
-	UserRepo   *repository.UserRepository
-	OrgService *OrgService
-	JWTSecret  string
-	FreePlanID uint
-	DB         *gorm.DB
-	Redis      *redis.Client
-	Email      email.Sender
-	BaseURL    string
+	UserRepo     *repository.UserRepository
+	OrgService   *OrgService
+	AuditService *AuditService
+	JWTSecret    string
+	FreePlanID   uint
+	DB           *gorm.DB
+	Redis        *redis.Client
+	Email        email.Sender
+	BaseURL      string
 }
 
 func NewAuthService(
 	repo *repository.UserRepository,
 	orgService *OrgService,
+	auditService *AuditService,
 	jwtSecret string,
 	db *gorm.DB,
 	redisClient *redis.Client,
@@ -56,14 +58,15 @@ func NewAuthService(
 	}
 
 	return &AuthService{
-		UserRepo:   repo,
-		OrgService: orgService,
-		JWTSecret:  jwtSecret,
-		FreePlanID: freePlan.ID,
-		DB:         db,
-		Redis:      redisClient,
-		Email:      emailSender,
-		BaseURL:    baseURL,
+		UserRepo:     repo,
+		OrgService:   orgService,
+		AuditService: auditService,
+		JWTSecret:    jwtSecret,
+		FreePlanID:   freePlan.ID,
+		DB:           db,
+		Redis:        redisClient,
+		Email:        emailSender,
+		BaseURL:      baseURL,
 	}
 }
 
@@ -98,6 +101,10 @@ func (s *AuthService) Register(
 		return errors.New("registration failed: " + err.Error())
 	}
 
+	// Log audit event
+	orgID, _ := s.OrgService.GetOrgIDForUser(user.ID)
+	s.AuditService.Log(orgID, user.ID, "user.registered", "user", fmt.Sprintf("%d", user.ID), "", nil)
+
 	// Send verification email (fire and forget — don't block registration)
 	go s.sendVerificationEmail(user.ID, email)
 
@@ -107,18 +114,111 @@ func (s *AuthService) Register(
 func (s *AuthService) Login(
 	email string,
 	password string,
-) (string, error) {
+) (string, string, error) {
 
 	user, err := s.UserRepo.FindByEmail(email)
 	if err != nil {
-		return "", errors.New("invalid credentials")
+		return "", "", errors.New("invalid credentials")
 	}
 
 	if !utils.CheckPassword(password, user.PasswordHash) {
-		return "", errors.New("invalid credentials")
+		return "", "", errors.New("invalid credentials")
 	}
 
-	return utils.GenerateToken(user.ID, s.JWTSecret)
+	accessToken, err := utils.GenerateToken(user.ID, s.JWTSecret)
+	if err != nil {
+		return "", "", err
+	}
+
+	rawRefreshToken, err := utils.GenerateRefreshToken()
+	if err != nil {
+		return "", "", err
+	}
+
+	tokenHash := utils.HashRefreshToken(rawRefreshToken)
+
+	dbToken := model.RefreshToken{
+		UserID:    user.ID,
+		TokenHash: tokenHash,
+		ExpiresAt: time.Now().Add(30 * 24 * time.Hour),
+	}
+
+	if err := s.DB.Create(&dbToken).Error; err != nil {
+		return "", "", err
+	}
+
+	// Log audit event
+	orgID, _ := s.OrgService.GetOrgIDForUser(user.ID)
+	s.AuditService.Log(orgID, user.ID, "user.login", "user", fmt.Sprintf("%d", user.ID), "", nil)
+
+	return accessToken, rawRefreshToken, nil
+}
+
+func (s *AuthService) RefreshSession(refreshToken string) (string, string, error) {
+	tokenHash := utils.HashRefreshToken(refreshToken)
+
+	var dbToken model.RefreshToken
+	err := s.DB.Where("token_hash = ?", tokenHash).First(&dbToken).Error
+	if err != nil {
+		return "", "", errors.New("invalid or expired refresh token")
+	}
+
+	if dbToken.ExpiresAt.Before(time.Now()) {
+		return "", "", errors.New("refresh token expired")
+	}
+
+	if dbToken.RevokedAt != nil {
+		return "", "", errors.New("refresh token revoked")
+	}
+
+	// Generate new access token
+	newAccessToken, err := utils.GenerateToken(dbToken.UserID, s.JWTSecret)
+	if err != nil {
+		return "", "", err
+	}
+
+	// Generate new refresh token for rotation
+	newRawRefreshToken, err := utils.GenerateRefreshToken()
+	if err != nil {
+		return "", "", err
+	}
+
+	newHash := utils.HashRefreshToken(newRawRefreshToken)
+
+	// Revoke old refresh token
+	now := time.Now()
+	dbToken.RevokedAt = &now
+	if err := s.DB.Save(&dbToken).Error; err != nil {
+		return "", "", err
+	}
+
+	// Save new refresh token
+	newDBToken := model.RefreshToken{
+		UserID:    dbToken.UserID,
+		TokenHash: newHash,
+		ExpiresAt: time.Now().Add(30 * 24 * time.Hour),
+	}
+
+	if err := s.DB.Create(&newDBToken).Error; err != nil {
+		return "", "", err
+	}
+
+	return newAccessToken, newRawRefreshToken, nil
+}
+
+func (s *AuthService) Logout(refreshToken string) error {
+	tokenHash := utils.HashRefreshToken(refreshToken)
+	now := time.Now()
+	return s.DB.Model(&model.RefreshToken{}).
+		Where("token_hash = ? AND revoked_at IS NULL", tokenHash).
+		Update("revoked_at", now).Error
+}
+
+func (s *AuthService) RevokeAllSessions(userID uint) error {
+	now := time.Now()
+	return s.DB.Model(&model.RefreshToken{}).
+		Where("user_id = ? AND revoked_at IS NULL", userID).
+		Update("revoked_at", now).Error
 }
 
 // ---------------------------------------------------------------------------
@@ -259,9 +359,18 @@ func (s *AuthService) ResetPassword(token string, newPassword string) error {
 		return err
 	}
 
-	return s.DB.Model(&model.User{}).
+	err = s.DB.Model(&model.User{}).
 		Where("id = ?", userID).
 		Update("password_hash", hash).Error
+	if err != nil {
+		return err
+	}
+
+	// Log audit event
+	orgID, _ := s.OrgService.GetOrgIDForUser(userID)
+	s.AuditService.Log(orgID, userID, "user.password_changed", "user", fmt.Sprintf("%d", userID), "", nil)
+
+	return nil
 }
 
 // ---------------------------------------------------------------------------
